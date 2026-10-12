@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { getPayload } from "@/lib/data";
 import { renderDashboard } from "@/lib/render";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
+import { DashboardBehavior } from "./dashboard-behavior";
 
 // Request-time render: auth check, then one live query against Supabase.
 async function Dashboard() {
@@ -24,7 +25,12 @@ async function Dashboard() {
     minute: "2-digit",
   }).format(new Date());
 
-  return <div dangerouslySetInnerHTML={{ __html: renderDashboard(payload, generated) }} />;
+  return (
+    <>
+      <div dangerouslySetInnerHTML={{ __html: renderDashboard(payload, generated) }} />
+      <DashboardBehavior />
+    </>
+  );
 }
 
 export default function Page() {
