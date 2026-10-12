@@ -40,6 +40,15 @@ npm run lint && npm run typecheck && npm run build
 2. `vercel link`, then for each of the three variables: `vercel env add <NAME> production` (and `preview` if you use it).
 3. Push to `main`. Vercel builds and deploys on every push.
 
+## Scripts
+
+Both need your Supabase project ref and transaction-pooler host (Project Settings -> Database -> Connection string). Pass them as `SUPABASE_PROJECT_REF` and `SUPABASE_POOLER_HOST`, or leave them unset once `.env.local` has a `DATABASE_URL` and they are read from it. Nothing project-specific is committed.
+
+| Script | What it does |
+|---|---|
+| `scripts/set-db-url.sh` | Prompts (hidden) for the `dashboard_ro` password, writes `DATABASE_URL` to `.env.local`, tests the connection. |
+| `scripts/rotate-db-password.py` | Generates a new `dashboard_ro` password locally, writes `DATABASE_URL`, and prints only a SCRAM verifier as `alter role ... password '...'` to run in Supabase. |
+
 ## Versions
 
 Next 16.4, React 19.3, Node 24.x (Vercel default), ESLint 10. TypeScript is held at 6.0 because `typescript-eslint` (pulled in by `eslint-config-next`) does not support TS 7 yet.
