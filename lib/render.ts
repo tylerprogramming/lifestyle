@@ -136,7 +136,9 @@ export function computeStats(d: Payload): Stats {
   let daysSince: number | null = null;
   if (active.length) {
     const last = active[active.length - 1];
-    for (let c = last; activeSet.has(c); c = addDays(c, -1)) streak++;
+    // A streak is only live if today or yesterday was active (today may not be logged yet).
+    const start = activeSet.has(today) ? today : addDays(today, -1);
+    for (let c = start; activeSet.has(c); c = addDays(c, -1)) streak++;
     daysSince = daysBetween(today, last);
   }
   let best = 0;
