@@ -9,9 +9,23 @@ export type Day = {
   pr: boolean;
 };
 
+export type Run = {
+  id: number;
+  date: string;
+  name: string | null;
+  mi: number;
+  min: number | null;
+  pace: number | null;
+  hr: number | null;
+  cad: number | null;
+  el: number | null;
+  pr: boolean;
+};
+
 export type Payload = {
   today: string;
   days: Day[];
+  run_log?: Run[];
   fitness?: {
     total_runs?: number;
     total_miles?: number | null;

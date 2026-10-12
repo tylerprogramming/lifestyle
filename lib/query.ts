@@ -22,6 +22,10 @@ days as (
 select json_build_object(
   'today', (now() at time zone 'America/New_York')::date::text,
   'days', (select coalesce(json_agg(json_build_object('date',date::text,'run',run,'lift',lift,'ate_well',ate_well,'dist',round(dist::numeric,2),'pr',pr) order by date),'[]'::json) from days),
+  'run_log', (select coalesce(json_agg(json_build_object(
+      'id',id,'date',date::text,'name',subtype,'mi',round(distance_mi::numeric,2),'min',round(duration_min::numeric,2),
+      'pace',pace_sec_mi,'hr',nullif(avg_hr,0),'cad',cadence,'el',elevation_ft,'pr',coalesce(pr,false)
+    ) order by date, id),'[]'::json) from cardio_log where distance_mi > 0),
   'fitness', json_build_object(
     'total_runs', (select count(*) from cardio_log),
     'total_miles', (select round(sum(distance_mi)::numeric,1) from cardio_log),
