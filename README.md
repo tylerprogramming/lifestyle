@@ -11,8 +11,12 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 | `proxy.ts` | Password gate. Redirects to `/login` unless the `ls_session` cookie is valid. |
 | `app/login/` | Login form plus a server action that checks `DASHBOARD_PASSWORD` in constant time and sets a signed, httpOnly cookie that lasts 30 days. |
 | `app/page.tsx` | Re-checks the session, runs the query, renders the dashboard. |
-| `lib/query.ts` | The dashboard SQL, ported from `lifestyle-show/dashboard.sql`. "Today" is America/New_York. |
+| `app/dashboard-behavior.tsx` | Client component that wires up the server-rendered HTML (modal, filters). |
+| `lib/query.ts` | The dashboard SQL, ported from `lifestyle-show/dashboard.sql`. "Today" is America/New_York. Also returns every run as `run_log`. |
 | `lib/render.ts` | HTML renderer, ported from `lifestyle-show/dashboard.py`. Targets are at the top of the file. |
+| `lib/fitness.ts` | Run analysis (bests, weekly miles, comeback, cadence vs pace, 30-day form) and the Running modal. |
+| `lib/behavior.ts` | DOM behavior: `[data-open]` opens a dialog, heatmap run days jump to that run, log filters, `#running` deep link. |
+| `lib/util.ts` | Shared date and number formatting. |
 | `lib/session.ts` | HMAC-SHA256 session cookie (Web Crypto). |
 | `lib/data.ts` | `postgres` client, set up for Supabase's transaction pooler (`prepare: false`). |
 | `sql/readonly-role.sql` | Creates the `dashboard_ro` Postgres role Vercel connects as. |
@@ -24,6 +28,12 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 | `DATABASE_URL` | Pooler connection string for `dashboard_ro` (port 6543). |
 | `DASHBOARD_PASSWORD` | The password you type on `/login`. |
 | `AUTH_SECRET` | Random string of 32+ characters used to sign the cookie. Generate it with `openssl rand -hex 32`. If you rotate it, every existing session is logged out. |
+
+## Dashboard
+
+- The heatmap fills the panel width. Click any run day to open that run in the Running modal.
+- The Fitness card shows the last 5 runs and 12 weeks of mileage. Click it (or open `/#running`) for the Running modal: insights, bests, a pace chart of every run, 26 weeks of mileage, cadence vs pace, and a filterable log.
+- Every number is computed from the live `cardio_log` rows on each request. Nothing is cached.
 
 ## Local dev
 
