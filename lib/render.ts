@@ -3,6 +3,10 @@
 // query payload and returns the inner HTML of the page. No I/O, no secrets.
 
 import type { Day, Payload } from "./types";
+import { renderRunModal } from "./fitness";
+import { addDays, bd, daysBetween, esc, fmtInt, pace, sundayOf, toIso, toMs, WEEKDAYS, MONTHS } from "./util";
+
+export { esc, pace } from "./util";
 
 // Targets (mirror user_fitness_profile). Adjust here if they change.
 export const CAL_TARGET = 2100;
@@ -13,43 +17,9 @@ const GRID_WEEKS = 27;
 const CONSISTENCY_WINDOW = 30;
 
 const LEVEL_COLORS = ["#1b1f27", "#0e4429", "#006d32", "#26a641", "#39d353"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const GREEN = "#39d353";
 const AMBER = "#e3b341";
 const RED = "#f85149";
-const PURPLE = "#cba6f7";
-const DAY_MS = 86_400_000;
-
-// ---------- helpers ----------
-
-export function esc(s: unknown): string {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-export function pace(sec: number | null | undefined): string {
-  if (!sec) return "-";
-  const s = Math.trunc(sec);
-  return `${Math.floor(s / 60)}'${String(s % 60).padStart(2, "0")}"`;
-}
-
-const fmtInt = (n: number | undefined | null) => Math.trunc(Number(n ?? 0)).toLocaleString("en-US");
-
-// Dates are handled as UTC-midnight timestamps of ISO "YYYY-MM-DD" strings, so
-// arithmetic never crosses a DST boundary.
-const toMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
-const toIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-const addDays = (ms: number, n: number) => ms + n * DAY_MS;
-const daysBetween = (a: number, b: number) => Math.round((a - b) / DAY_MS);
-const bd = (ms: number) => {
-  const d = new Date(ms);
-  return `${MONTHS[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, "0")}`;
-};
-const sundayOf = (ms: number) => addDays(ms, -new Date(ms).getUTCDay());
 
 export function levelFor(x: Day | undefined): number {
   if (!x) return 0;
@@ -82,23 +52,6 @@ function sparkLine(raw: (number | null | undefined)[], w = 190, h = 38, color = 
     `stroke-linejoin="round" stroke-linecap="round"/>` +
     `<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="${color}"/></svg>`
   );
-}
-
-function sparkBars(pairs: [string, number][], w = 190, h = 38, color = GREEN, pad = 2): string {
-  if (!pairs.length) return '<div class="spark-empty">not enough data yet</div>';
-  const vals = pairs.map(([, v]) => v);
-  const mx = Math.max(...vals) || 1;
-  const n = vals.length;
-  const bw = (w - (n + 1) * pad) / n;
-  const rects = pairs.map(([lab, v], i) => {
-    const bh = (v / mx) * (h - 2);
-    const x = pad + i * (bw + pad);
-    return (
-      `<rect x="${x.toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" ` +
-      `rx="1.5" fill="${color}"><title>${esc(lab)}: ${v} mi</title></rect>`
-    );
-  });
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}">${rects.join("")}</svg>`;
 }
 
 function ring(pct: number, size = 92, stroke = 9): string {
@@ -212,7 +165,6 @@ export function renderDashboard(d: Payload, generated: string): string {
   const ts = d.today_strip ?? {};
   const tr = d.trends ?? {};
   const ll = d.last_logged ?? {};
-  const lr = f.last_run ?? null;
   const wt = f.weight ?? null;
 
   const daysAgo = (iso: string | null | undefined) => (iso ? daysBetween(today, toMs(iso)) : null);
@@ -252,118 +204,93 @@ export function renderDashboard(d: Payload, generated: string): string {
 
   // ---- grid html (float-free: day column + [months row over cols]) ----
   const labelsByWeek = new Map(monthLabels);
-  const g: string[] = ['<div class="cal"><div class="cal-day">'];
-  for (const lab of ["", "Mon", "", "Wed", "", "Fri", ""]) g.push(`<span>${lab}</span>`);
-  g.push('</div><div class="cal-main"><div class="months">');
-  weeks.forEach((_, wi) => g.push(`<span>${labelsByWeek.get(wi) ?? ""}</span>`));
-  g.push('</div><div class="cols">');
-  for (const col of cells) {
-    g.push('<div class="col">');
-    for (const { lv, title, future, isToday } of col) {
-      const cls = "cell" + (future ? " future" : "") + (isToday ? " today" : "");
-      const style = future ? "" : `background:${LEVEL_COLORS[lv]}`;
+  const g: string[] = [`<div class="hm" style="--weeks:${weeks.length}">`, '<span class="hm-corner"></span>'];
+  weeks.forEach((_, wi) => g.push(`<span class="hm-mo">${labelsByWeek.get(wi) ?? ""}</span>`));
+  const dayLabs = ["", "Mon", "", "Wed", "", "Fri", ""];
+  for (let row = 0; row < 7; row++) {
+    g.push(`<span class="hm-dl">${dayLabs[row]}</span>`);
+    for (let wi = 0; wi < cells.length; wi++) {
+      const { lv, title, future, isToday } = cells[wi][row];
+      const iso = toIso(weeks[wi][row]);
+      const runDay = !future && days.get(iso)?.run;
+      const cls = "cell" + (future ? " future" : "") + (isToday ? " today" : "") + (runDay ? " hit" : "");
+      const style = future ? "" : ` style="background:${LEVEL_COLORS[lv]}"`;
       const t = title ? ` title="${esc(title)}"` : "";
-      g.push(`<div class="${cls}" style="${style}"${t}></div>`);
+      const jump = runDay ? ` data-open="m-fitness" data-run-date="${iso}" role="button" tabindex="-1"` : "";
+      g.push(`<span class="${cls}"${style}${t}${jump}></span>`);
     }
-    g.push("</div>");
   }
-  g.push("</div></div></div>");
-  const gridHtml = g.join("\n");
+  g.push("</div>");
+  const gridHtml = g.join("");
   const legend =
-    '<div class="legend">Less ' +
+    '<div class="legend"><span>Click a run day to open it</span><span class="lg">Less ' +
     LEVEL_COLORS.map((col) => `<span class="cell" style="background:${col}"></span>`).join("") +
-    " More</div>";
+    " More</span></div>";
 
-  // ---- pillar cards ----
-  const pillar = (
-    icon: string,
-    name: string,
-    big: string,
-    sub: string,
-    rows: [string, string | number][],
-    spark = "",
-    cap = "",
-  ) => {
-    const rh = rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join("");
-    const sp = spark
-      ? `<div class="sparkwrap">${spark}${cap ? `<div class=spark-cap>${cap}</div>` : ""}</div>`
-      : "";
-    return `<div class="card">
-          <div class="card-h"><span class="ic">${icon}</span>${name}</div>
-          <div class="big">${big}</div><div class="sub">${sub}</div>
-          ${sp}<div class="rows">${rh}</div></div>`;
-  };
+  // ---- fitness (primary card + modal) ----
+  const runs = d.run_log ?? [];
+  const { modal, stats } = renderRunModal(runs, d.today);
+  const last12 = stats.weekly.slice(-12);
+  const mx12 = Math.max(1, ...last12.map((w) => w.mi));
+  const bars = last12
+    .map((w, i) => {
+      const h = Math.max(w.mi ? (w.mi / mx12) * 100 : 0, 3);
+      const cur = i === last12.length - 1 ? " cur" : "";
+      return `<span class="wb${w.mi ? "" : " zero"}${cur}" style="height:${h.toFixed(0)}%" title="Week of ${bd(w.start)}: ${w.mi.toFixed(1)} mi"></span>`;
+    })
+    .join("");
+  const best5k = stats.bests.find((x) => x.label === "5K")?.best;
+  const recent = runs.slice(-5).reverse();
+  const rPaces = recent.map((r) => r.pace ?? 0).filter(Boolean);
+  const pMin = Math.min(...rPaces), pMax = Math.max(...rPaces);
+  const recentHtml = recent
+    .map((r) => {
+      // bar length = speed relative to the other 4 (fastest = full)
+      const w = r.pace && pMax > pMin ? 35 + ((pMax - r.pace) / (pMax - pMin)) * 65 : 100;
+      return `<div class="rr" data-open="m-fitness" data-run-date="${r.date}"><span class="rr-d">${bd(toMs(r.date))}</span>` +
+        `<span class="rr-n">${esc(r.name ?? "run")}</span><span class="rr-m">${r.mi.toFixed(2)} mi</span>` +
+        `<span class="rr-p"><span class="trk"><i style="width:${w.toFixed(0)}%"></i></span><em>${pace(r.pace)}</em></span></div>`;
+    })
+    .join("");
+  const fitnessCard = `<div class="card fit" data-open="m-fitness" role="button" tabindex="0" aria-haspopup="dialog" aria-label="Open running details">
+    <div class="card-h"><span class="dot g"></span>Fitness<span class="open">Open running &rarr;</span></div>
+    <div class="fit-top">
+      <div><div class="big">${f.total_miles ?? 0}<small>mi</small></div><div class="sub">${f.total_runs ?? 0} runs logged</div></div>
+      <div class="fit-wk"><div class="wbars">${bars}</div><div class="sub">weekly miles, 12 wks</div></div>
+    </div>
+    ${recent.length ? `<div class="recent"><div class="recent-h">Recent runs</div>${recentHtml}</div>` : ""}
+    <div class="rows">
+      <div class="row"><span>Last 7 / 30 days</span><b>${f.miles_7d ?? 0} mi &middot; ${f.miles_30d ?? 0} mi</b></div>
+      ${best5k ? `<div class="row"><span>Best 5K</span><b>${pace(best5k.pace)}/mi &middot; ${bd(toMs(best5k.date))}</b></div>` : ""}
+      <div class="row"><span>Weight</span><b>${weightLine}</b></div>
+    </div>
+  </div>`;
 
-  const runPaces = (tr.runs ?? []).map((r) => r.pace);
-  let paceCap = "";
-  if (runPaces.length) {
-    paceCap = `pace, last ${runPaces.length} runs &middot; best ${pace(Math.min(...runPaces))} &middot; last ${pace(runPaces[runPaces.length - 1])}`;
-  }
-  const fitnessCard = pillar(
-    "&#127939;",
-    "Fitness",
-    `${f.total_miles ?? 0}<small>mi</small>`,
-    `${f.total_runs ?? 0} runs logged`,
-    [
-      ["Last 7 days", `${f.miles_7d ?? 0} mi`],
-      ["Last 30 days", `${f.miles_30d ?? 0} mi`],
-      ["Last run", lr ? `${lr.dist ?? "-"} mi &middot; ${pace(lr.pace_sec_mi)}/mi` : "-"],
-      ["Best 5K pace", `${pace(f.best_5k_pace)}/mi`],
-      ["PRs", f.prs ?? 0],
-      ["Weight", weightLine],
-    ],
-    sparkLine(runPaces, 190, 38, PURPLE),
-    paceCap,
-  );
-
-  const wm: [string, number][] = (tr.weekly_miles ?? []).map((w) => [w.week, w.mi]);
-  const contentCard = pillar(
-    "&#127909;",
-    "Content",
-    `${fmtInt(c.views)}<small>views</small>`,
-    `${c.videos ?? 0} videos tracked`,
-    [
-      ["Subs gained", `+${c.subs ?? 0}`],
-      ["Top video", c.top ? `${fmtInt(c.top.views)} views` : "-"],
-      ["This week", `${b.videos_published ?? 0} published`],
-    ],
-  );
-
-  const readingCard = pillar(
-    "&#128214;",
-    "Reading",
-    `${rd.minutes ?? 0}<small>min</small>`,
-    `${rd.sessions ?? 0} sessions logged`,
-    [
-      ["Current book", esc(rd.last_book || "-")],
-      ["Last session", gr !== null ? `${gr}d ago` : "-"],
-    ],
-  );
-
+  // ---- secondary pillars (compact) ----
+  const mini = (dot: string, name: string, big: string, sub: string, rows: [string, string | number][]) =>
+    `<div class="card mini"><div class="card-h"><span class="dot ${dot}"></span>${name}</div>
+      <div class="mini-main"><div class="big">${big}</div><div class="sub">${sub}</div></div>
+      <div class="rows">${rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join("")}</div></div>`;
+  const contentCard = mini("p", "Content", `${fmtInt(c.views)}<small>views</small>`, `${c.videos ?? 0} videos tracked`, [
+    ["Subs gained", `+${c.subs ?? 0}`],
+    ["Top video", c.top ? `${fmtInt(c.top.views)} views` : "-"],
+  ]);
+  const readingCard = mini("a", "Reading", `${rd.minutes ?? 0}<small>min</small>`, `${rd.sessions ?? 0} session${rd.sessions === 1 ? "" : "s"}`, [
+    ["Book", esc(rd.last_book || "-")],
+    ["Last session", gr !== null ? `${gr}d ago` : "-"],
+  ]);
   const mrrVals = (tr.mrr ?? []).map((m) => m.mrr);
-  const businessCard = pillar(
-    "&#128176;",
-    "Business",
-    `$${fmtInt(b.mrr)}<small>MRR</small>`,
-    `week of ${b.week_start ?? "-"}`,
-    [
-      ["Skool members", fmtInt(b.skool_members)],
-      ["Email subs", fmtInt(b.email_subs)],
-      ["Goal", "$500K ARR / 2026"],
-    ],
-    sparkLine(mrrVals, 190, 38, GREEN),
-    mrrVals.length > 1 ? "MRR trend" : "",
-  );
-
-  // weekly-miles spark lives under fitness as a second mini row
-  const milesSpark = wm.length
-    ? `<div class="card-spark"><div class="card-h"><span class="ic">&#128202;</span>` +
-      `Weekly miles &middot; 12 wks</div>${sparkBars(wm, 400, 46)}</div>`
-    : "";
+  const businessCard = mini("g", "Business", `$${fmtInt(b.mrr)}<small>MRR</small>`, `week of ${b.week_start ?? "-"}`, [
+    ["Skool members", fmtInt(b.skool_members)],
+    ["Email subs", fmtInt(b.email_subs)],
+    ...(mrrVals.length > 1 ? ([["MRR trend", sparkLine(mrrVals, 90, 18, GREEN, 2)]] as [string, string][]) : []),
+  ]);
 
   const chip = (label: string, val: string | number, target: number | null = null, unit = "") => {
     const t = target !== null ? `<span> / ${target}${unit}</span>` : "";
-    return `<div class="chip"><div class="chip-v">${val}${unit}${t}</div><div class="chip-l">${label}</div></div>`;
+    const pct = target ? Math.min(100, (Number(val) / target) * 100) : null;
+    const bar = pct !== null ? `<div class="chip-bar"><i style="width:${pct.toFixed(0)}%"></i></div>` : "";
+    return `<div class="chip"><div class="chip-v">${val}${unit}${t}</div><div class="chip-l">${label}</div>${bar}</div>`;
   };
   const int = (v: unknown) => Math.trunc(Number(v ?? 0));
   const strip = [
@@ -373,38 +300,41 @@ export function renderDashboard(d: Payload, generated: string): string {
     chip("Caffeine", int(ts.caffeine), null, "mg"),
     chip("Check-in", ts.checkin_today ? "Done" : "Open"),
   ].join("");
-  const nudgeHtml = nudges.map(([lv, txt]) => `<div class="nudge ${lv}">${txt}</div>`).join("");
+  const nudgeHtml = nudges.map(([lv, txt]) => `<div class="nudge ${lv}"><span class="nd"></span>${txt}</div>`).join("");
 
   const td = new Date(today);
   const todayLabel = `${WEEKDAYS[td.getUTCDay()]}, ${bd(today)}`;
+  const streakTxt = streak ? `${streak}-day streak` : "streak at 0";
 
   return `<div class="wrap">
-<header><h1>Lifestyle OS</h1><span class="gen">generated ${esc(generated)}</span></header>
-<div class="tag">$500K ARR by end of 2026 &middot; consistency over intensity</div>
+<header>
+  <div><h1>Lifestyle OS</h1><div class="tag">$500K ARR by end of 2026 &middot; consistency over intensity</div></div>
+  <div class="hdr-r"><div class="hdr-day">${todayLabel}</div><div class="gen">updated ${esc(generated)}</div></div>
+</header>
 
-<div class="panel">
+<section class="panel move">
   <div class="move-top">
     <div class="ring-wrap">${ring(consistency)}
-      <div class="ring-cap"><b>Consistency</b><br>active ${winActive} of last ${CONSISTENCY_WINDOW} days</div>
+      <div class="ring-cap"><b>Consistency</b><br>active ${winActive} of last ${CONSISTENCY_WINDOW} days<br><span class="dim">${streakTxt}</span></div>
     </div>
     <div class="move-stats">
       <div class="stat"><div class="v"><b>${streak}</b></div><div class="l">day streak</div></div>
       <div class="stat"><div class="v">${best}</div><div class="l">best streak</div></div>
-      <div class="stat"><div class="v">${f.miles_7d ?? 0}</div><div class="l">mi this week</div></div>
+      <div class="stat"><div class="v">${f.miles_7d ?? 0}</div><div class="l">mi last 7 days</div></div>
     </div>
   </div>
   ${gridHtml}
   ${legend}
-</div>
+</section>
 
-<div class="cards">${fitnessCard}${contentCard}${readingCard}${businessCard}</div>
-${milesSpark}
+<div class="cards">${fitnessCard}<div class="stack">${contentCard}${readingCard}${businessCard}</div></div>
 
-<div class="panel" style="margin-top:20px">
-  <div class="panel-h"><h2>Today &middot; ${todayLabel}</h2></div>
+<section class="panel">
+  <div class="panel-h"><h2>Today</h2></div>
   <div class="strip">${strip}</div>
   <div class="nudges">${nudgeHtml}</div>
-</div>
+</section>
 
+${modal}
 </div>`;
 }
