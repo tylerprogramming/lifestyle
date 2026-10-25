@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "next": "16.4.0",
+    "next": "16.4.3",
     "postgres": "^3.4.9",
     "react": "19.3.0",
     "react-dom": "19.3.0"
@@ -20,7 +20,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^10.12.0",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.3",
     "typescript": "~6.0"
   },
   "engines": {
