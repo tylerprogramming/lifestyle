@@ -26,6 +26,10 @@ select json_build_object(
       'id',id,'date',date::text,'name',subtype,'mi',round(distance_mi::numeric,2),'min',round(duration_min::numeric,2),
       'pace',pace_sec_mi,'hr',nullif(avg_hr,0),'cad',cadence,'el',elevation_ft,'pr',coalesce(pr,false)
     ) order by date, id),'[]'::json) from cardio_log where distance_mi > 0),
+  'food_log', (select coalesce(json_agg(json_build_object('date',date::text,'cal',cal,'protein',protein) order by date),'[]'::json) from (
+      select date, sum(coalesce(calories,0))::int cal, round(sum(coalesce(protein,0))::numeric,1) protein
+      from activity_log where calories is not null and date > (now() at time zone 'America/New_York')::date - 70
+      group by date) fl),
   'fitness', json_build_object(
     'total_runs', (select count(*) from cardio_log),
     'total_miles', (select round(sum(distance_mi)::numeric,1) from cardio_log),

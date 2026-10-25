@@ -4,6 +4,8 @@
 
 import type { Day, Payload } from "./types";
 import { renderRunModal } from "./fitness";
+import { planWeek } from "./goals";
+import { renderGoals } from "./goals-view";
 import { addDays, bd, daysBetween, esc, fmtInt, pace, sundayOf, toIso, toMs, WEEKDAYS, MONTHS } from "./util";
 
 export { esc, pace } from "./util";
@@ -326,6 +328,8 @@ export function renderDashboard(d: Payload, generated: string): string {
   ${gridHtml}
   ${legend}
 </section>
+
+${renderGoals(planWeek(runs, d.food_log ?? [], d.today))}
 
 <div class="cards">${fitnessCard}<div class="stack">${contentCard}${readingCard}${businessCard}</div></div>
 

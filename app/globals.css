@@ -182,3 +182,31 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
 .login button{background:var(--accent);color:#0d1017;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-weight:600;cursor:pointer}
 .login button:disabled{opacity:.6}
 .login .err{color:#f85149;font-size:13px}
+
+/* ---------- weekly goals ---------- */
+.goals .panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.gsum{font-size:12px;color:var(--dim)} .gsum b{color:var(--text)}
+.glist{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.goal{display:flex;gap:12px;align-items:flex-start;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.gk{flex:none;width:18px;height:18px;margin-top:1px;border-radius:50%;border:1.5px solid var(--line-2);display:grid;place-items:center;font-size:11px;color:#0d1017;font-weight:800}
+.goal.met .gk{background:var(--green);border-color:var(--green)}
+.gb{flex:1;min-width:0}
+.gt{display:flex;align-items:baseline;gap:8px;font-size:14px}
+.gt b{font-weight:600;min-width:0}
+.gt em{margin-left:auto;font-style:normal;color:var(--dim);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.goal.met .gt em{color:var(--green)}
+.ga{flex:none;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);border:1px solid var(--line-2);border-radius:5px;padding:0 5px;line-height:16px}
+.gbar{height:3px;background:var(--line);border-radius:2px;margin:8px 0 6px;overflow:hidden}
+.gbar i{display:block;height:100%;background:var(--accent)}
+.goal.met .gbar i{background:var(--green)}
+.gw{font-size:12px;color:var(--dim);line-height:1.45}
+.glast{margin-top:12px;font-size:13px}
+.glast summary{cursor:pointer;color:var(--dim)} .glast summary:hover{color:var(--text)}
+.glast ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
+.glast li{display:flex;gap:8px;color:var(--dim)} .glast li span{width:14px;text-align:center}
+.glast li.met{color:var(--text)} .glast li.met span{color:var(--green)}
+.glast li em{margin-left:auto;font-style:normal;font-size:12px}
+@media (max-width:860px){
+  .glist{grid-template-columns:1fr}
+  .gt{flex-wrap:wrap} .gt em{margin-left:0;width:100%}
+}

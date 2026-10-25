@@ -22,10 +22,18 @@ export type Run = {
   pr: boolean;
 };
 
+/** One day's logged food totals (activity_log), used by the weekly goals. */
+export type FoodDay = {
+  date: string;
+  cal: number;
+  protein: number;
+};
+
 export type Payload = {
   today: string;
   days: Day[];
   run_log?: Run[];
+  food_log?: FoodDay[];
   fitness?: {
     total_runs?: number;
     total_miles?: number | null;
