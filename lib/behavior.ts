@@ -121,7 +121,27 @@ export function attachDashboard(doc: Document): () => void {
     s.scrollLeft = s.scrollWidth;
   });
 
+  // Color scheme switcher in the sidebar: saved per browser.
+  const markTheme = () => {
+    const cur = doc.documentElement.dataset.theme;
+    doc.querySelectorAll<HTMLElement>("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeSet === cur)));
+  };
+  const onTheme = (e: MouseEvent) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>("[data-theme-set]");
+    if (!b) return;
+    doc.documentElement.dataset.theme = b.dataset.themeSet!;
+    try {
+      localStorage.setItem("ls-theme", b.dataset.themeSet!);
+    } catch {
+      /* private mode: the choice just won't persist */
+    }
+    markTheme();
+  };
+  markTheme();
+  doc.addEventListener("click", onTheme);
+
   return () => {
+    doc.removeEventListener("click", onTheme);
     doc.removeEventListener("click", onClick);
     doc.removeEventListener("keydown", onKey);
     doc.removeEventListener("close", onClose, true);
