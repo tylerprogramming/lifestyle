@@ -19,17 +19,21 @@ grant select on
   public.activity_log,
   public.cardio_log,
   public.strength_entries,
+  public.strength_sets,
+  public.exercises,
   public.reading_log,
   public.daily_checkin,
   public.weight_log,
   public.youtube_daily,
   public.business_weekly,
   public.water_log,
-  public.caffeine_log
+  public.caffeine_log,
+  public.training_plan,
+  public.meal_plan
 to dashboard_ro;
 
 -- weight_log has RLS on with no policy; bypassrls lets the dashboard read it.
--- Safe because the role has SELECT-only grants on these 10 tables.
+-- Safe because the role has SELECT-only grants on these tables.
 alter role dashboard_ro bypassrls;
 
 -- Every session for this role is read-only and bounded.

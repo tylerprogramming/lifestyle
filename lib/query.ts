@@ -18,13 +18,37 @@ days as (
     coalesce((select max(distance_mi) from cardio_log c where c.date=d.date),0) as dist,
     coalesce((select bool_or(pr) from cardio_log c where c.date=d.date),false) as pr
   from d
+),
+td as (select (now() at time zone 'America/New_York')::date as td),
+-- One object per calendar day (a year back, a week ahead) with everything
+-- logged or planned that day. Runs come from run_log; this adds the rest.
+dl as (
+  select g.date::date as date, json_strip_nulls(json_build_object(
+    'food', (select json_build_object('cal',sum(calories)::int,'p',round(sum(protein)::numeric,1),'f',round(sum(fat)::numeric,1),'c',round(sum(carbs)::numeric,1))
+             from activity_log a where a.date=g.date and a.calories is not null having count(*)>0),
+    'notes', (select string_agg(notes,' ' order by id) from activity_log a where a.date=g.date and notes is not null),
+    'flags', (select json_build_object('run',bool_or(running),'lift',bool_or(weights),'ate_well',bool_or(ate_well))
+              from activity_log a where a.date=g.date having count(*)>0),
+    'lifts', (select json_agg(json_build_object('ex',coalesce(e.name,'Exercise'),'min',s.duration_min,'notes',s.notes,
+                'sets',(select json_agg(json_build_object('w',ss.weight,'r',ss.reps) order by ss.set_order) from strength_sets ss where ss.entry_id=s.id))
+              order by s.id) from strength_entries s left join exercises e on e.id=s.exercise_id where s.date=g.date),
+    'plan', (select json_agg(json_build_object('session',session,'kind',kind,'focus',focus,'details',details,'mi',target_mi,'done',completed,'note',actual_notes)
+              order by case session when 'AM' then 0 when 'Lunch' then 1 when 'PM' then 2 else 3 end, id) from training_plan t where t.date=g.date),
+    'meals', (select json_agg(json_build_object('code',meal_code,'name',name,'cal',calories,'p',protein,'done',completed,'actual',actual_name,'acal',actual_calories,'ap',actual_protein)
+              order by id) from meal_plan m where m.date=g.date),
+    'water', (select sum(oz) from water_log w where w.date=g.date),
+    'weight', (select max(weight_lb) from weight_log w where w.date=g.date),
+    'checkin', (select json_build_object('mood',mood,'energy',energy,'sleep',sleep_hrs,'wins',wins) from daily_checkin c where c.date=g.date order by id desc limit 1)
+  )) as j
+  from td, generate_series(td.td - 371, td.td + 7, interval '1 day') g(date)
 )
 select json_build_object(
   'today', (now() at time zone 'America/New_York')::date::text,
+  'day_log', (select coalesce(json_object_agg(date::text, j),'{}'::json) from dl where j::text <> '{}'),
   'days', (select coalesce(json_agg(json_build_object('date',date::text,'run',run,'lift',lift,'ate_well',ate_well,'dist',round(dist::numeric,2),'pr',pr) order by date),'[]'::json) from days),
   'run_log', (select coalesce(json_agg(json_build_object(
       'id',id,'date',date::text,'name',subtype,'mi',round(distance_mi::numeric,2),'min',round(duration_min::numeric,2),
-      'pace',pace_sec_mi,'hr',nullif(avg_hr,0),'cad',cadence,'el',elevation_ft,'pr',coalesce(pr,false)
+      'pace',pace_sec_mi,'hr',nullif(avg_hr,0),'cad',cadence,'el',elevation_ft,'kcal',calories_burned,'pr',coalesce(pr,false)
     ) order by date, id),'[]'::json) from cardio_log where distance_mi > 0),
   'food_log', (select coalesce(json_agg(json_build_object('date',date::text,'cal',cal,'protein',protein) order by date),'[]'::json) from (
       select date, sum(coalesce(calories,0))::int cal, round(sum(coalesce(protein,0))::numeric,1) protein

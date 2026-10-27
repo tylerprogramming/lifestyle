@@ -19,7 +19,42 @@ export type Run = {
   hr: number | null;
   cad: number | null;
   el: number | null;
+  kcal?: number | null;
   pr: boolean;
+};
+
+export type PlanItem = {
+  session: string | null;
+  kind: string | null;
+  focus: string | null;
+  details?: string;
+  mi?: number;
+  done?: boolean;
+  note?: string;
+};
+
+export type MealItem = {
+  code: string;
+  name: string;
+  cal?: number;
+  p?: number;
+  done?: boolean;
+  actual?: string;
+  acal?: number;
+  ap?: number;
+};
+
+/** Everything logged or planned on one day except runs (those are in run_log). Null fields are stripped. */
+export type DayInfo = {
+  food?: { cal?: number; p?: number; f?: number; c?: number };
+  notes?: string;
+  flags?: { run?: boolean; lift?: boolean; ate_well?: boolean };
+  lifts?: { ex: string; min?: number; notes?: string; sets?: { w?: number; r?: number }[] }[];
+  plan?: PlanItem[];
+  meals?: MealItem[];
+  water?: number;
+  weight?: number;
+  checkin?: { mood?: number; energy?: number; sleep?: number; wins?: string };
 };
 
 /** One day's logged food totals (activity_log), used by the weekly goals. */
@@ -32,6 +67,8 @@ export type FoodDay = {
 export type Payload = {
   today: string;
   days: Day[];
+  /** ISO date -> that day's detail, a year back to a week ahead. */
+  day_log?: Record<string, DayInfo>;
   run_log?: Run[];
   food_log?: FoodDay[];
   fitness?: {
