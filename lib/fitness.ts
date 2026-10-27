@@ -132,7 +132,7 @@ function weeklyChart(weekly: RunStats["weekly"]): string {
   const bw = (W - padL) / weekly.length;
   const y = (v: number) => padT + (1 - v / top) * (H - padT - padB);
   const grid = [0, top / 2, top].map((v) =>
-    `<line x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${LINE}"/>` +
+    `<line class="gl" x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="${LINE}"/>` +
     `<text x="${padL - 6}" y="${y(v) + 3}" text-anchor="end" class="ax">${v}</text>`).join("");
   let lastMonth = -1;
   const bars = weekly.map((w, i) => {
@@ -141,9 +141,9 @@ function weeklyChart(weekly: RunStats["weekly"]): string {
     const lab = m !== lastMonth ? `<text x="${x}" y="${H - 6}" class="ax">${MONTHS[m]}</text>` : "";
     lastMonth = m;
     const tip = `<title>Week of ${md(w.start)}: ${fmtMi(w.mi)} mi, ${w.n} run${w.n === 1 ? "" : "s"}</title>`;
-    if (!w.mi) return `${lab}<rect x="${x}" y="${y(0) - 2}" width="${bw - 4}" height="2" rx="1" fill="${LINE}">${tip}</rect>`;
+    if (!w.mi) return `${lab}<rect class="bz" x="${x}" y="${y(0) - 2}" width="${bw - 4}" height="2" rx="1" fill="${LINE}">${tip}</rect>`;
     const cur = i === weekly.length - 1;
-    return `${lab}<rect x="${x}" y="${y(w.mi)}" width="${bw - 4}" height="${y(0) - y(w.mi)}" rx="3" fill="${GREEN}" opacity="${cur ? 0.55 : 1}">${tip}</rect>`;
+    return `${lab}<rect class="bb" x="${x}" y="${y(w.mi)}" width="${bw - 4}" height="${y(0) - y(w.mi)}" rx="3" fill="${GREEN}" opacity="${cur ? 0.55 : 1}">${tip}</rect>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly miles, last 26 weeks">${grid}${bars}</svg>`;
 }
@@ -159,7 +159,7 @@ function paceChart(runs: Run[], gapMin = 14): string {
   const x = (t: number) => padL + ((t - t0) / span) * (W - padL - padR);
   const y = (p: number) => padT + ((p - lo) / (hi - lo || 1)) * (H - padT - padB); // faster = higher
   const grid: string[] = [];
-  for (let p = lo; p <= hi; p += 60) grid.push(`<line x1="${padL}" x2="${W - padR}" y1="${y(p)}" y2="${y(p)}" stroke="${LINE}"/><text x="${padL - 6}" y="${y(p) + 3}" text-anchor="end" class="ax">${pace(p)}</text>`);
+  for (let p = lo; p <= hi; p += 60) grid.push(`<line class="gl" x1="${padL}" x2="${W - padR}" y1="${y(p)}" y2="${y(p)}" stroke="${LINE}"/><text x="${padL - 6}" y="${y(p) + 3}" text-anchor="end" class="ax">${pace(p)}</text>`);
   // month ticks
   const d0 = new Date(t0);
   for (let m = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1)).getTime(); m <= t1; ) {
@@ -172,7 +172,7 @@ function paceChart(runs: Run[], gapMin = 14): string {
   for (let i = 1; i < dates.length; i++) {
     const a = toMs(dates[i - 1]), b = toMs(dates[i]);
     const g = daysBetween(b, a);
-    if (g >= gapMin) grid.push(`<rect x="${x(a) + 4}" y="${padT}" width="${Math.max(x(b) - x(a) - 8, 1)}" height="${H - padT - padB}" fill="#ffffff" opacity="0.025"><title>${g}-day break</title></rect><text x="${(x(a) + x(b)) / 2}" y="${padT + 12}" text-anchor="middle" class="ax">${g}d off</text>`);
+    if (g >= gapMin) grid.push(`<rect class="brk" x="${x(a) + 4}" y="${padT}" width="${Math.max(x(b) - x(a) - 8, 1)}" height="${H - padT - padB}" fill="#ffffff" opacity="0.025"><title>${g}-day break</title></rect><text x="${(x(a) + x(b)) / 2}" y="${padT + 12}" text-anchor="middle" class="ax">${g}d off</text>`);
   }
   // 5-run rolling trend
   const trend = rs.map((_, i) => {
@@ -182,9 +182,9 @@ function paceChart(runs: Run[], gapMin = 14): string {
   const dots = rs.map((r) => {
     const rad = 2.5 + Math.min(r.mi, 12.5) * 0.55;
     const col = r.pr ? AMBER : PURPLE;
-    return `<circle cx="${x(toMs(r.date)).toFixed(1)}" cy="${y(r.pace!).toFixed(1)}" r="${rad.toFixed(1)}" fill="${col}" fill-opacity="${r.pr ? 0.95 : 0.45}" stroke="${col}" stroke-width="1" data-run="${r.id}"><title>${md(toMs(r.date))} - ${esc(r.name ?? "run")}: ${r.mi} mi at ${pace(r.pace)}/mi${r.pr ? " (PR)" : ""}</title></circle>`;
+    return `<circle class="dt${r.pr ? " pr" : ""}" cx="${x(toMs(r.date)).toFixed(1)}" cy="${y(r.pace!).toFixed(1)}" r="${rad.toFixed(1)}" fill="${col}" fill-opacity="${r.pr ? 0.95 : 0.45}" stroke="${col}" stroke-width="1" data-run="${r.id}"><title>${md(toMs(r.date))} - ${esc(r.name ?? "run")}: ${r.mi} mi at ${pace(r.pace)}/mi${r.pr ? " (PR)" : ""}</title></circle>`;
   }).join("");
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Pace of every run">${grid.join("")}<polyline points="${trend}" fill="none" stroke="${PURPLE}" stroke-width="2" stroke-opacity="0.9" stroke-linejoin="round"/>${dots}</svg>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Pace of every run">${grid.join("")}<polyline class="tr" points="${trend}" fill="none" stroke="${PURPLE}" stroke-width="2" stroke-opacity="0.9" stroke-linejoin="round"/>${dots}</svg>`;
 }
 
 function cadenceChart(runs: Run[]): string {
@@ -197,14 +197,14 @@ function cadenceChart(runs: Run[]): string {
   const x = (c: number) => padL + ((c - c0) / (c1 - c0 || 1)) * (W - padL - padR);
   const y = (p: number) => padT + ((p - p0) / (p1 - p0 || 1)) * (H - padT - padB);
   const g: string[] = [];
-  for (let p = p0; p <= p1; p += 60) g.push(`<line x1="${padL}" x2="${W - padR}" y1="${y(p)}" y2="${y(p)}" stroke="${LINE}"/><text x="${padL - 6}" y="${y(p) + 3}" text-anchor="end" class="ax">${pace(p)}</text>`);
+  for (let p = p0; p <= p1; p += 60) g.push(`<line class="gl" x1="${padL}" x2="${W - padR}" y1="${y(p)}" y2="${y(p)}" stroke="${LINE}"/><text x="${padL - 6}" y="${y(p) + 3}" text-anchor="end" class="ax">${pace(p)}</text>`);
   for (let c = c0; c <= c1; c += 5) g.push(`<text x="${x(c)}" y="${H - 8}" text-anchor="middle" class="ax">${c}</text>`);
   // least-squares fit
   const n = rs.length, mx = sum(cs) / n, my = sum(ps) / n;
   const b = sum(cs.map((c, i) => (c - mx) * (ps[i] - my))) / (sum(cs.map((c) => (c - mx) ** 2)) || 1);
   const a = my - b * mx;
-  const fit = `<line x1="${x(c0)}" y1="${y(a + b * c0)}" x2="${x(c1)}" y2="${y(a + b * c1)}" stroke="${GREEN}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
-  const dots = rs.map((r) => `<circle cx="${x(r.cad!).toFixed(1)}" cy="${y(r.pace!).toFixed(1)}" r="4" fill="${GREEN}" fill-opacity="0.5" stroke="${GREEN}"><title>${md(toMs(r.date))}: ${r.cad} spm, ${pace(r.pace)}/mi</title></circle>`).join("");
+  const fit = `<line class="fitl" x1="${x(c0)}" y1="${y(a + b * c0)}" x2="${x(c1)}" y2="${y(a + b * c1)}" stroke="${GREEN}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+  const dots = rs.map((r) => `<circle class="cd" cx="${x(r.cad!).toFixed(1)}" cy="${y(r.pace!).toFixed(1)}" r="4" fill="${GREEN}" fill-opacity="0.5" stroke="${GREEN}"><title>${md(toMs(r.date))}: ${r.cad} spm, ${pace(r.pace)}/mi</title></circle>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cadence versus pace">${g.join("")}${fit}${dots}</svg>`;
 }
 
@@ -270,10 +270,8 @@ export function renderRunning(runs: Run[], todayIso: string): { body: string; we
   const ins = insights(s, todayIso).map((t) => `<li>${t}</li>`).join("");
   const weekly = weeklyChart(s.weekly);
 
-  const body = `<section class="running">
-  <div class="page-top">
-    <div><a class="back" href="/">&larr; Dashboard</a><div class="eyebrow">Fitness</div><h1>Running</h1></div>
-  </div>
+  const body = `<header class="top"><div><h1>Running</h1><p class="sub">${runs.length} runs &middot; ${fmtMi(totalMi)} mi logged</p></div></header>
+<section class="running" style="--c:var(--run)">
   <div class="kpis">
     <div><b>${fmtMi(totalMi)}</b><span>mi all time</span></div>
     <div><b>${runs.length}</b><span>runs</span></div>

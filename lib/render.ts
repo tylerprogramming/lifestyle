@@ -1,20 +1,19 @@
-// Lifestyle OS dashboard renderer (TypeScript port of
-// ~/.claude/skills/lifestyle-show/dashboard.py). Pure view layer: takes the
-// query payload and returns the inner HTML of the page. No I/O, no secrets.
+// Lifestyle OS page renderers. Pure view layer: takes the query payload and
+// returns HTML strings for the main column. No I/O, no secrets.
 //
-// Layout, top to bottom, every section full width:
-//   Today (what to do now) -> This week (goals) -> Activity (year heatmap)
-//   -> Fitness -> Content -> Business -> Reading.
-// Every heatmap square, recent run and the Today panel open the day dialog,
-// which shows only that day. All runs live on the /running page.
+// Home: rings for calories / protein / water next to this week's goals, then
+// today's plan beside running, then the year of days. Every day square, recent
+// run and "Open today" opens the day dialog for that date only. Colors come
+// from CSS variables per metric (--cal, --pro, --water, --run, ...), so the
+// color scheme switcher restyles everything, charts included.
 
 import type { Day, Payload } from "./types";
 import { analyzeRuns } from "./fitness";
 import { calTarget, type DayData } from "./day-view";
 import { planWeek } from "./goals";
-import { renderGoals } from "./goals-view";
+import { renderGoalsCompact } from "./goals-view";
 import { PROTEIN_TARGET, WATER_GOAL, WEIGHT_GOAL } from "./targets";
-import { addDays, bd, daysBetween, esc, fmtInt, pace, sundayOf, toIso, toMs, WEEKDAYS, MONTHS } from "./util";
+import { addDays, bd, daysBetween, dur, esc, fmtInt, md, pace, sundayOf, toIso, toMs, MONTHS, WEEKDAYS } from "./util";
 
 export { esc, pace } from "./util";
 export { CAL_TARGET, PROTEIN_TARGET, WATER_GOAL, WEIGHT_GOAL } from "./targets";
@@ -22,12 +21,7 @@ export { CAL_TARGET, PROTEIN_TARGET, WATER_GOAL, WEIGHT_GOAL } from "./targets";
 const GRID_WEEKS = 53; // a full year, like GitHub
 const CONSISTENCY_WINDOW = 30;
 const BAR_WEEKS = 26;
-
-const LEVEL_COLORS = ["#1b1f27", "#0e4429", "#006d32", "#26a641", "#39d353"];
-const GREEN = "#39d353";
-const AMBER = "#e3b341";
-const RED = "#f85149";
-const MEAL_LABEL: Record<string, string> = { B: "Breakfast", L: "Lunch", S1: "Snack", D: "Dinner", S2: "Evening" };
+const MEAL_LABEL: Record<string, string> = { B: "Bkfst", L: "Lunch", S1: "Snack", D: "Dinner", S2: "Night" };
 
 export function levelFor(x: Day | undefined): number {
   if (!x) return 0;
@@ -39,42 +33,33 @@ export function levelFor(x: Day | undefined): number {
   return 1; // logged a day (ate well / rest) but no workout
 }
 
-function sparkLine(raw: (number | null | undefined)[], w = 190, h = 38, color = GREEN, pad = 4): string {
+/** Small trend line; takes its color from CSS `color` (currentColor). */
+function sparkLine(raw: (number | null | undefined)[], w = 160, h = 32, pad = 3): string {
   const vals = raw.filter((v): v is number => v !== null && v !== undefined);
   if (vals.length < 2) return '<div class="spark-empty">not enough data yet</div>';
   const mn = Math.min(...vals);
-  const mx = Math.max(...vals);
-  const rng = mx - mn || 1;
-  const n = vals.length;
-  const pts = vals.map((v, i) => [
-    pad + (i / (n - 1)) * (w - 2 * pad),
-    pad + (1 - (v - mn) / rng) * (h - 2 * pad),
-  ]);
+  const rng = Math.max(...vals) - mn || 1;
+  const pts = vals.map((v, i) => [pad + (i / (vals.length - 1)) * (w - 2 * pad), pad + (1 - (v - mn) / rng) * (h - 2 * pad)]);
   const poly = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const area = `${poly} ${pts[n - 1][0].toFixed(1)},${h} ${pts[0][0].toFixed(1)},${h}`;
-  const [ex, ey] = pts[n - 1];
-  return (
-    `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
-    `<polygon points="${area}" fill="${color}" opacity="0.10"/>` +
-    `<polyline points="${poly}" fill="none" stroke="${color}" stroke-width="2" ` +
-    `stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="${color}"/></svg>`
-  );
+  const [ex, ey] = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
+    `<polygon points="${poly} ${ex.toFixed(1)},${h} ${pts[0][0].toFixed(1)},${h}" fill="currentColor" opacity="0.12"/>` +
+    `<polyline points="${poly}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="currentColor"/></svg>`;
 }
 
-function ring(pct: number, size = 92, stroke = 9): string {
-  const color = pct >= 70 ? GREEN : pct >= 40 ? AMBER : RED;
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const off = circ * (1 - pct / 100);
-  const c = size / 2;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="ring">
-      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#21262d" stroke-width="${stroke}"/>
-      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
-        stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"
-        transform="rotate(-90 ${c} ${c})"/>
-      <text x="${c}" y="${c}" text-anchor="middle" dominant-baseline="central" class="ring-t">${pct}<tspan class="ring-p">%</tspan></text>
-    </svg>`;
+/** Concentric progress rings, outermost first. Colors are CSS variable names. */
+function rings(items: { v: number; max: number; c: string }[]): string {
+  const radii = [86, 66, 46];
+  const arcs = items.map((it, i) => {
+    const r = radii[i];
+    const C = 2 * Math.PI * r;
+    const frac = it.max ? Math.min(Math.max(it.v / it.max, 0), 1) : 0;
+    const track = `<circle class="rt" cx="100" cy="100" r="${r}" style="stroke:var(${it.c})"/>`;
+    if (!frac) return track;
+    return track + `<circle class="rv" cx="100" cy="100" r="${r}" style="stroke:var(${it.c})" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - frac)).toFixed(1)}"/>`;
+  });
+  return `<svg class="rings-svg" viewBox="0 0 200 200" aria-hidden="true">${arcs.join("")}</svg>`;
 }
 
 // ---------- stats ----------
@@ -89,9 +74,7 @@ export type Stats = {
 
 export function computeStats(d: Payload): Stats {
   const today = toMs(d.today);
-  const activeSet = new Set(
-    (d.days ?? []).filter((x) => x.run || x.lift).map((x) => toMs(x.date)),
-  );
+  const activeSet = new Set((d.days ?? []).filter((x) => x.run || x.lift).map((x) => toMs(x.date)));
   const active = [...activeSet].sort((a, b) => a - b);
   let streak = 0;
   let daysSince: number | null = null;
@@ -127,50 +110,50 @@ export function dayDataScript(d: Payload): string {
   return `<script type="application/json" id="day-data">${JSON.stringify(data).replace(/</g, "\\u003c")}</script>`;
 }
 
-// ---------- page ----------
+/** The day dialog shell plus its data. Any page with [data-day] elements needs this. */
+export function dayDialog(d: Payload): string {
+  return `<dialog id="m-day" class="sheet day" aria-labelledby="m-day-h"><div class="sheet-in" id="m-day-body"></div></dialog>\n${dayDataScript(d)}`;
+}
 
-export function renderDashboard(d: Payload, generated: string): string {
+function dayTitle(iso: string): string {
+  const dt = new Date(toMs(iso));
+  return `${WEEKDAYS[dt.getUTCDay()]}, ${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}`;
+}
+
+// ---------- year of days ----------
+
+export function heatmap(d: Payload): string {
   const today = toMs(d.today);
   const days = new Map((d.days ?? []).map((x) => [x.date, x]));
   const dayLog = d.day_log ?? {};
-  const { streak, best, daysSince, winActive, consistency } = computeStats(d);
-  const runs = d.run_log ?? [];
-  const weight = d.fitness?.weight?.weight_lb != null ? Number(d.fitness.weight.weight_lb) : null;
+  const runMiles = new Map<string, number>();
+  (d.run_log ?? []).forEach((r) => runMiles.set(r.date, (runMiles.get(r.date) ?? 0) + r.mi));
 
-  // ---- grid: a year of weeks, ending with the current week (Sun..Sat) ----
   const endWeek = sundayOf(today);
   const startWeek = addDays(endWeek, -7 * (GRID_WEEKS - 1));
   const weeks: number[][] = [];
-  for (let cur = startWeek; cur <= endWeek; cur = addDays(cur, 7)) {
-    weeks.push(Array.from({ length: 7 }, (_, i) => addDays(cur, i)));
-  }
-  const monthLabels: [number, string][] = [];
-  let lastMonth: number | null = null;
+  for (let cur = startWeek; cur <= endWeek; cur = addDays(cur, 7)) weeks.push(Array.from({ length: 7 }, (_, i) => addDays(cur, i)));
+
+  // Label a week when its month starts; drop a label that would crowd the next one.
+  const labels: string[] = Array(weeks.length).fill("");
+  let lastM = -1, lastW = -9;
   weeks.forEach((wk, wi) => {
-    const m = new Date(wk[0]).getUTCMonth();
-    if (m !== lastMonth) {
-      // skip crowded labels (<3 cols apart); a leading 1-week sliver yields to the next month
-      const prev = monthLabels[monthLabels.length - 1];
-      if (prev && wi - prev[0] < 3) {
-        if (prev[0] === 0) monthLabels[monthLabels.length - 1] = [wi, MONTHS[m]];
-      } else {
-        monthLabels.push([wi, MONTHS[m]]);
-      }
-      lastMonth = m;
+    const m = new Date(wk[6]).getUTCMonth();
+    if (m !== lastM) {
+      if (wi - lastW < 3) labels[lastW] = "";
+      labels[wi] = MONTHS[m];
+      lastW = wi;
+      lastM = m;
     }
   });
 
-  const runMiles = new Map<string, number>();
-  runs.forEach((r) => runMiles.set(r.date, (runMiles.get(r.date) ?? 0) + r.mi));
-
-  const labelsByWeek = new Map(monthLabels);
   const g: string[] = [`<div class="hm" style="--weeks:${weeks.length}">`, '<span class="hm-corner"></span>'];
-  weeks.forEach((_, wi) => g.push(`<span class="hm-mo">${labelsByWeek.get(wi) ?? ""}</span>`));
+  labels.forEach((l) => g.push(`<span class="hm-mo">${l}</span>`));
   const dayLabs = ["", "Mon", "", "Wed", "", "Fri", ""];
   for (let row = 0; row < 7; row++) {
     g.push(`<span class="hm-dl">${dayLabs[row]}</span>`);
-    for (let wi = 0; wi < weeks.length; wi++) {
-      const dt = weeks[wi][row];
+    for (const wk of weeks) {
+      const dt = wk[row];
       const iso = toIso(dt);
       const future = dt > today;
       const rec = days.get(iso);
@@ -184,211 +167,144 @@ export function renderDashboard(d: Payload, generated: string): string {
       if (info?.food?.cal) bits.push(`${fmtInt(info.food.cal)} cal`);
       if (rec?.pr) bits.push("PR");
       const planned = future && info?.plan?.length ? info.plan.map((p) => p.focus).filter(Boolean).join(", ") : "";
-      const title = future
-        ? planned ? `${bd(dt)}: planned ${planned}` : ""
-        : `${bd(dt)}: ${bits.length ? bits.join(", ") : "nothing logged"}`;
+      const title = future ? (planned ? `${bd(dt)}: planned ${planned}` : "") : `${bd(dt)}: ${bits.length ? bits.join(", ") : "nothing logged"}`;
       const clickable = !future || !!planned;
-      const cls = "cell" + (future ? " future" : "") + (planned ? " planned" : "") + (dt === today ? " today" : "") + (clickable ? " hit" : "");
-      const style = future ? "" : ` style="background:${LEVEL_COLORS[lv]}"`;
+      const cls = `cell l${lv}` + (future ? " future" : "") + (planned ? " planned" : "") + (dt === today ? " today" : "") + (clickable ? " hit" : "");
       const attrs = clickable ? ` data-day="${iso}" role="button" tabindex="-1" aria-label="${esc(title)}"` : "";
-      g.push(`<span class="${cls}"${style}${title ? ` title="${esc(title)}"` : ""}${attrs}></span>`);
+      g.push(`<span class="${cls}"${title ? ` title="${esc(title)}"` : ""}${attrs}></span>`);
     }
   }
   g.push("</div>");
-  const gridHtml = `<div class="hm-scroll">${g.join("")}</div>`;
-  const legend =
-    '<div class="legend"><span>Click any day to see just that day</span><span class="lg">Less ' +
-    LEVEL_COLORS.map((col) => `<span class="cell" style="background:${col}"></span>`).join("") +
-    " More</span></div>";
+  return `<div class="hm-scroll">${g.join("")}</div>`;
+}
 
-  const f = d.fitness ?? {};
-  const c = d.content ?? {};
-  const rd = d.reading ?? {};
-  const b = d.business ?? {};
+// ---------- home ----------
+
+export function renderDashboard(d: Payload, generated: string): string {
+  const runs = d.run_log ?? [];
+  const dayLog = d.day_log ?? {};
+  const stats = computeStats(d);
+  const plan = planWeek(runs, d.food_log ?? [], d.today);
+  const weight = d.fitness?.weight?.weight_lb != null ? Number(d.fitness.weight.weight_lb) : null;
   const ts = d.today_strip ?? {};
-  const tr = d.trends ?? {};
-  const ll = d.last_logged ?? {};
-  const wt = f.weight ?? null;
-
-  const daysAgo = (iso: string | null | undefined) => (iso ? daysBetween(today, toMs(iso)) : null);
-
-  // ---- nudges ----
-  const nudges: [string, string][] = [];
-  const gc = daysAgo(ll.checkin);
-  if (ts.checkin_today) {
-    nudges.push(["ok", "Check-in logged today. The keystone is green."]);
-  } else if (gc === null || gc >= 3) {
-    nudges.push(["warn", `Check-in is the canary - ${gc ?? "no"} days since the last one. Log one tonight.`]);
-  } else {
-    nudges.push(["idle", `Last check-in ${gc}d ago. Close today's loop tonight.`]);
-  }
-  const gw = daysAgo(ll.weigh_in);
-  if (gw !== null && gw >= 7) {
-    nudges.push(["warn", `No weigh-in for ${gw} days. Sunday is weigh-in day - step on the scale.`]);
-  }
-  const gr = daysAgo(ll.reading);
-  if (gr === null || gr >= 3) {
-    nudges.push(["idle", `Reading has been quiet ${gr ?? "a while"}d - a few pages tonight restarts the streak.`]);
-  }
-  const gl = daysAgo(ll.lift);
-  if (gl !== null && gl >= 7 && !dayLog[d.today]?.flags?.lift) {
-    nudges.push(["idle", `Last logged strength sets were ${gl} days ago - log the sets you do so they show up here.`]);
-  }
-  if (daysSince && daysSince >= 2) {
-    nudges.unshift(["warn", `${daysSince} days since your last run or lift - get one in to restart the streak (best was ${best}).`]);
-  }
-
-  let weightLine = "-";
-  if (wt?.weight_lb != null) {
-    const togo = Number(wt.weight_lb) - WEIGHT_GOAL;
-    weightLine = `${wt.weight_lb} lb`;
-    if (togo > 0) weightLine += ` &middot; ${togo.toFixed(1)} to goal`;
-  }
-
-  // ---- today ----
   const tInfo = dayLog[d.today];
   const tRuns = runs.filter((r) => r.date === d.today);
-  const tTarget = calTarget(tInfo, tRuns, weight);
-  const chip = (label: string, val: string | number, target: number | null = null, unit = "", sub = "") => {
-    const t = target !== null ? `<span> / ${fmtInt(target)}${unit}</span>` : "";
-    const pct = target ? Math.min(100, (Number(val) / target) * 100) : null;
-    const bar = pct !== null ? `<div class="chip-bar"><i style="width:${pct.toFixed(0)}%"></i></div>` : "";
-    const shown = typeof val === "number" ? fmtInt(val) : val;
-    return `<div class="chip"><div class="chip-v">${shown}${unit}${t}</div><div class="chip-l">${label}${sub ? ` <em>${sub}</em>` : ""}</div>${bar}</div>`;
-  };
-  const int = (v: unknown) => Math.trunc(Number(v ?? 0));
-  const strip = [
-    chip("Calories", int(ts.cal), tTarget.target, "", tTarget.burn ? `incl. ${fmtInt(tTarget.burn)} for ${tTarget.mi.toFixed(2).replace(/\.?0+$/, "")} mi` : ""),
-    chip("Protein", int(ts.protein), PROTEIN_TARGET, "g"),
-    chip("Water", int(ts.water), WATER_GOAL, "oz"),
-    chip("Ran", tRuns.length ? tRuns.reduce((a, r) => a + r.mi, 0).toFixed(2) : "0", null, " mi"),
-    chip("Check-in", ts.checkin_today ? "Done" : "Open"),
-  ].join("");
+  const t = calTarget(tInfo, tRuns, weight);
+  const cal = Math.trunc(Number(ts.cal ?? 0));
+  const protein = Math.trunc(Number(ts.protein ?? 0));
+  const water = Math.trunc(Number(ts.water ?? 0));
+  const ranMi = tRuns.reduce((a, r) => a + r.mi, 0);
+  const plannedMi = (tInfo?.plan ?? []).filter((p) => p.kind === "run").reduce((a, p) => a + (p.mi ?? 0), 0);
+  const miTxt = (mi: number) => mi.toFixed(2).replace(/\.?0+$/, "");
 
-  const planItems = (tInfo?.plan ?? []).map((p) => {
-    const mi = p.mi ? ` &middot; ${p.mi} mi` : "";
-    return `<li class="${p.done ? "done" : ""}"><span class="tk">${p.done ? "&#10003;" : ""}</span><span class="tg">${esc(p.session ?? "")}</span><b>${esc(p.focus ?? p.kind ?? "")}</b><em>${mi.replace(" &middot; ", "")}</em></li>`;
-  }).join("");
+  // ---- rings ----
+  const togo = (v: number, max: number, unit: string) => (v >= max ? '<span class="pos">goal hit</span>' : `${fmtInt(max - v)}${unit} to go`);
+  const runRow = ranMi
+    ? `<div style="--c:var(--run)"><i></i><span><b class="num">${miTxt(ranMi)}</b> mi run today</span><em>${tRuns.length === 1 ? `${pace(tRuns[0].pace)}/mi &middot; ${dur(tRuns[0].min)}` : `${tRuns.length} runs`}</em></div>`
+    : `<div style="--c:var(--run)"><i></i><span>${plannedMi ? `<b class="num">${miTxt(plannedMi)}</b> mi run planned` : "No run today"}</span><em></em></div>`;
+  const hero = `<section class="card s8 hero" aria-label="Today">
+    <div class="rings-box">${rings([
+      { v: cal, max: t.target, c: "--cal" },
+      { v: protein, max: PROTEIN_TARGET, c: "--pro" },
+      { v: water, max: WATER_GOAL, c: "--water" },
+    ])}<div class="rings-ctr"><b class="num">${Math.round((cal / t.target) * 100)}%</b><span>of calories</span></div></div>
+    <div class="legend-r">
+      <div style="--c:var(--cal)"><i></i><span><b class="num">${fmtInt(cal)}</b> / ${fmtInt(t.target)} calories</span><em>${cal > t.target ? `${fmtInt(cal - t.target)} over` : `${fmtInt(t.target - cal)} left`}</em></div>
+      <div style="--c:var(--pro)"><i></i><span><b class="num">${protein}</b> / ${PROTEIN_TARGET} g protein</span><em>${togo(protein, PROTEIN_TARGET, " g")}</em></div>
+      <div style="--c:var(--water)"><i></i><span><b class="num">${water}</b> / ${WATER_GOAL} oz water</span><em>${togo(water, WATER_GOAL, " oz")}</em></div>
+      ${runRow}
+      ${t.burn ? `<p class="note">Calorie target is ${fmtInt(t.target - t.burn)} plus ${fmtInt(t.burn)} for ${t.planned ? "the planned " : "today's "}${miTxt(t.mi)} mi run.</p>` : ""}
+    </div>
+  </section>`;
+
+  // ---- today's plan ----
+  const planItems = (tInfo?.plan ?? []).map((p) =>
+    `<li class="${p.done ? "done" : ""}" style="--c:var(--run)"><span class="ck">${p.done ? "&#10003;" : ""}</span><span class="tg">${esc(p.session ?? "")}</span><b>${esc(p.focus ?? p.kind ?? "")}</b><em>${p.mi ? `${p.mi} mi` : ""}</em></li>`).join("");
   const mealItems = (tInfo?.meals ?? []).map((m) => {
-    const name = m.done && m.actual ? m.actual : m.name;
-    const cal = m.done && m.acal != null ? m.acal : m.cal;
-    return `<li class="${m.done ? "done" : ""}"><span class="tk">${m.done ? "&#10003;" : ""}</span><span class="tg">${MEAL_LABEL[m.code] ?? esc(m.code)}</span><b>${esc(name)}</b><em>${cal != null ? fmtInt(cal) : ""}</em></li>`;
+    const name = (m.done && m.actual ? m.actual : m.name).replace(/\s*\(.*$/, "");
+    const c = m.done && m.acal != null ? m.acal : m.cal;
+    return `<li class="${m.done ? "done" : ""}" style="--c:var(--cal)"><span class="ck">${m.done ? "&#10003;" : ""}</span><span class="tg">${MEAL_LABEL[m.code] ?? esc(m.code)}</span><b>${esc(name)}</b><em>${c != null ? fmtInt(c) : ""}</em></li>`;
   }).join("");
-  const nudgeHtml = nudges.map(([lv, txt]) => `<div class="nudge ${lv}"><span class="nd"></span>${txt}</div>`).join("");
+  const planCard = `<section class="card s6">
+    <h3>Today's plan <button type="button" class="link" data-day="${d.today}">Open today &rarr;</button></h3>
+    <div class="sub-h first">Training</div>
+    ${planItems ? `<ul class="list">${planItems}</ul>` : '<p class="empty">Nothing planned.</p>'}
+    <div class="sub-h">Meals</div>
+    ${mealItems ? `<ul class="list">${mealItems}</ul>` : '<p class="empty">No meal plan for today.</p>'}
+  </section>`;
 
-  const td = new Date(today);
-  const todayLabel = `${WEEKDAYS[td.getUTCDay()]}, ${bd(today)}`;
-  const streakTxt = streak ? `${streak}-day streak` : "streak at 0";
-
-  const todayPanel = `<section class="panel today-p">
-  <div class="panel-h"><h2>Today</h2><button type="button" class="link" data-day="${d.today}">Open today &rarr;</button></div>
-  <div class="strip">${strip}</div>
-  <div class="today-cols">
-    <div><h3>Training</h3>${planItems ? `<ul class="tlist">${planItems}</ul>` : '<div class="dim sm">Nothing planned.</div>'}</div>
-    <div><h3>Meals</h3>${mealItems ? `<ul class="tlist">${mealItems}</ul>` : '<div class="dim sm">No meal plan for today.</div>'}</div>
-    <div><h3>Nudges</h3><div class="nudges">${nudgeHtml}</div></div>
-  </div>
-</section>`;
-
-  // ---- activity (heatmap) ----
-  const activityPanel = `<section class="panel move">
-  <div class="panel-h"><h2>Activity</h2><span class="dim sm">last 12 months</span></div>
-  <div class="move-top">
-    <div class="ring-wrap">${ring(consistency)}
-      <div class="ring-cap"><b>Consistency</b><br>active ${winActive} of last ${CONSISTENCY_WINDOW} days<br><span class="dim">${streakTxt}</span></div>
-    </div>
-    <div class="move-stats">
-      <div class="stat"><div class="v"><b>${streak}</b></div><div class="l">day streak</div></div>
-      <div class="stat"><div class="v">${best}</div><div class="l">best streak</div></div>
-      <div class="stat"><div class="v">${f.miles_7d ?? 0}</div><div class="l">mi last 7 days</div></div>
-      <div class="stat"><div class="v">${f.miles_30d ?? 0}</div><div class="l">mi last 30 days</div></div>
-    </div>
-  </div>
-  ${gridHtml}
-  ${legend}
-</section>`;
-
-  // ---- fitness ----
-  const stats = analyzeRuns(runs, d.today);
-  const lastN = stats.weekly.slice(-BAR_WEEKS);
+  // ---- running ----
+  const ana = analyzeRuns(runs, d.today);
+  const lastN = ana.weekly.slice(-BAR_WEEKS);
   const mxN = Math.max(1, ...lastN.map((w) => w.mi));
-  const bars = lastN
-    .map((w, i) => {
-      const h = Math.max(w.mi ? (w.mi / mxN) * 100 : 0, 3);
-      const cur = i === lastN.length - 1 ? " cur" : "";
-      return `<span class="wb${w.mi ? "" : " zero"}${cur}" style="height:${h.toFixed(0)}%" title="Week of ${bd(w.start)}: ${w.mi.toFixed(1)} mi"></span>`;
-    })
-    .join("");
-  const best5k = stats.bests.find((x) => x.label === "5K")?.best;
-  const best10k = stats.bests.find((x) => x.label === "10K")?.best;
-  const recent = runs.slice(-6).reverse();
-  const rPaces = recent.map((r) => r.pace ?? 0).filter(Boolean);
-  const pMin = Math.min(...rPaces), pMax = Math.max(...rPaces);
-  const recentHtml = recent
-    .map((r) => {
-      // bar length = speed relative to the others shown (fastest = full)
-      const w = r.pace && pMax > pMin ? 35 + ((pMax - r.pace) / (pMax - pMin)) * 65 : 100;
-      return `<div class="rr" data-day="${r.date}" role="button" tabindex="0"><span class="rr-d">${bd(toMs(r.date))}</span>` +
-        `<span class="rr-n">${esc(r.name ?? "run")}</span><span class="rr-m">${r.mi.toFixed(2)} mi</span>` +
-        `<span class="rr-p"><span class="trk"><i style="width:${w.toFixed(0)}%"></i></span><em>${pace(r.pace)}</em></span></div>`;
-    })
-    .join("");
-  const fitnessPanel = `<section class="panel fit">
-  <div class="panel-h"><h2><span class="dot g"></span>Fitness</h2><a class="link" href="/running">All runs, charts and bests &rarr;</a></div>
-  <div class="fit-grid">
-    <div class="fit-kpi">
-      <div class="big">${f.total_miles ?? 0}<small>mi</small></div><div class="sub">${f.total_runs ?? 0} runs logged</div>
-      <div class="rows">
-        <div class="row"><span>Last 7 / 30 days</span><b>${f.miles_7d ?? 0} &middot; ${f.miles_30d ?? 0} mi</b></div>
-        ${best5k ? `<div class="row"><span>Best 5K</span><b>${pace(best5k.pace)}/mi &middot; ${bd(toMs(best5k.date))}</b></div>` : ""}
-        ${best10k ? `<div class="row"><span>Best 10K</span><b>${pace(best10k.pace)}/mi &middot; ${bd(toMs(best10k.date))}</b></div>` : ""}
-        <div class="row"><span>Weight</span><b>${weightLine}</b></div>
-      </div>
+  const bars = lastN.map((w, i) =>
+    `<i class="${w.mi ? "" : "z"}${i === lastN.length - 1 ? " cur" : ""}" style="height:${Math.max(w.mi ? (w.mi / mxN) * 100 : 0, 3).toFixed(0)}%" title="Week of ${bd(w.start)}: ${w.mi.toFixed(1)} mi"></i>`).join("");
+  const best = (label: string) => ana.bests.find((x) => x.label === label)?.best;
+  const b5 = best("5K"), b10 = best("10K");
+  const recent = runs.slice(-4).reverse().map((r) =>
+    `<div class="rr" data-day="${r.date}" role="button" tabindex="0"><span>${md(toMs(r.date))}</span><b>${esc(r.name ?? "Run")}</b><span class="r">${r.mi.toFixed(2)} mi</span><em class="num">${pace(r.pace)}</em></div>`).join("");
+  const runningCard = `<section class="card s6" style="--c:var(--run)">
+    <h3>Running <a class="link" href="/running">All runs &rarr;</a></h3>
+    <div class="headline"><span class="num big">${d.fitness?.total_miles ?? 0}<small>mi total</small></span><span class="dim">${d.fitness?.miles_7d ?? 0} mi in the last 7 days</span></div>
+    <div class="bars" role="img" aria-label="Weekly miles, last ${BAR_WEEKS} weeks">${bars}</div>
+    <div class="cap">weekly miles, last ${BAR_WEEKS} weeks</div>
+    <div class="kvs">
+      ${b5 ? `<div class="kv"><span>Best 5K</span><b class="num">${dur(b5.min)} &middot; ${md(toMs(b5.date))}</b></div>` : ""}
+      ${b10 ? `<div class="kv"><span>Best 10K</span><b class="num">${dur(b10.min)} &middot; ${md(toMs(b10.date))}</b></div>` : ""}
     </div>
-    <div class="fit-wk"><div class="wbars">${bars}</div><div class="sub">weekly miles, last ${BAR_WEEKS} weeks</div></div>
-    ${recent.length ? `<div class="recent"><div class="recent-h">Recent runs <span class="dim">click for that day</span></div>${recentHtml}</div>` : ""}
-  </div>
-</section>`;
+    ${recent ? `<div class="sub-h">Recent</div><div class="recent">${recent}</div>` : ""}
+  </section>`;
 
-  // ---- content / business / reading: one full-width band each ----
-  const band = (dot: string, name: string, big: string, sub: string, rows: [string, string | number][]) =>
-    `<section class="panel band"><div class="band-h"><h2><span class="dot ${dot}"></span>${name}</h2></div>
-      <div class="band-main"><div class="big">${big}</div><div class="sub">${sub}</div></div>
-      ${rows.map(([k, v]) => `<div class="band-kv"><span>${k}</span><b>${v}</b></div>`).join("")}</section>`;
-  const contentBand = band("p", "Content", `${fmtInt(c.views)}<small>views</small>`, `${c.videos ?? 0} videos tracked`, [
-    ["Subs gained", `+${fmtInt(c.subs)}`],
-    ["Top video", c.top ? `${esc(c.top.title)} &middot; ${fmtInt(c.top.views)}` : "-"],
-  ]);
-  const mrrVals = (tr.mrr ?? []).map((m) => m.mrr);
-  const businessBand = band("g", "Business", `$${fmtInt(b.mrr)}<small>MRR</small>`, `week of ${b.week_start ?? "-"}`, [
-    ["Skool members", fmtInt(b.skool_members)],
-    ["Email subs", fmtInt(b.email_subs)],
-    ...(mrrVals.length > 1 ? ([["MRR trend", sparkLine(mrrVals, 120, 22, GREEN, 2)]] as [string, string][]) : []),
-  ]);
-  const readingBand = band("a", "Reading", `${rd.minutes ?? 0}<small>min</small>`, `${rd.sessions ?? 0} session${rd.sessions === 1 ? "" : "s"}`, [
-    ["Book", esc(rd.last_book || "-")],
-    ["Last session", gr !== null ? `${gr}d ago` : "-"],
-  ]);
+  // ---- activity ----
+  const activity = `<section class="card s12" id="activity" style="--c:var(--run)">
+    <h3>Activity <span class="dim">last 12 months &middot; click a day</span></h3>
+    ${heatmap(d)}
+    <div class="hm-foot"><span><b class="num">${stats.consistency}%</b> active the last 30 days &middot; best streak <b class="num">${stats.best}</b> days &middot; <b class="num">${d.fitness?.miles_30d ?? 0}</b> mi in 30 days</span><span class="lg">Less <i class="cell l0"></i><i class="cell l1"></i><i class="cell l2"></i><i class="cell l3"></i><i class="cell l4"></i> More</span></div>
+  </section>`;
 
-  return `<div class="wrap">
-<header>
-  <div><h1>Lifestyle OS</h1><div class="tag">$500K ARR by end of 2026 &middot; consistency over intensity</div></div>
-  <div class="hdr-r"><div class="hdr-day">${todayLabel}</div><div class="gen">updated ${esc(generated)}</div></div>
-</header>
+  const sub = `${stats.streak ? `${stats.streak}-day streak` : "Streak at 0"} &middot; ${plan.hit} of ${plan.goals.length} weekly goals hit`;
+  return `<header class="top"><div><h1>${esc(dayTitle(d.today))}</h1><p class="sub">${sub}</p></div><span class="pill">updated ${esc(generated)}</span></header>
+<div class="grid">
+${hero}
+${renderGoalsCompact(plan, "s4")}
+${planCard}
+${runningCard}
+${activity}
+</div>
+${dayDialog(d)}`;
+}
 
-${todayPanel}
+// ---------- work: content, business, reading, body ----------
 
-${renderGoals(planWeek(runs, d.food_log ?? [], d.today))}
-
-${activityPanel}
-
-${fitnessPanel}
-
-${contentBand}
-${businessBand}
-${readingBand}
-
-<dialog id="m-day" class="sheet day" aria-labelledby="m-day-h"><div class="sheet-in" id="m-day-body"></div></dialog>
-${dayDataScript(d)}
+export function renderWork(d: Payload): string {
+  const c = d.content ?? {};
+  const b = d.business ?? {};
+  const rd = d.reading ?? {};
+  const mrr = (d.trends?.mrr ?? []).map((m) => m.mrr);
+  const lastRead = d.last_logged?.reading;
+  const ago = lastRead ? daysBetween(toMs(d.today), toMs(lastRead)) : null;
+  const kv = (k: string, v: string) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+  const wt = d.fitness?.weight;
+  const togo = wt?.weight_lb != null ? Number(wt.weight_lb) - WEIGHT_GOAL : null;
+  return `<header class="top"><div><h1>Work &amp; body</h1><p class="sub">Content, business, reading and weight</p></div></header>
+<div class="grid">
+  <section class="card s6" id="content" style="--c:var(--content)"><h3><i class="dot"></i>Content</h3>
+    <div class="num big">${fmtInt(c.views)}<small>views</small></div>
+    <div class="kvs">${kv("Videos tracked", fmtInt(c.videos))}${kv("Subs gained", `+${fmtInt(c.subs)}`)}${kv("Top video", c.top ? `${fmtInt(c.top.views)} views` : "-")}</div>
+    ${c.top ? `<p class="note">${esc(c.top.title)}</p>` : ""}
+  </section>
+  <section class="card s6" id="business" style="--c:var(--biz)"><h3><i class="dot"></i>Business <span class="dim">week of ${esc(b.week_start ?? "-")}</span></h3>
+    <div class="num big">$${fmtInt(b.mrr)}<small>MRR</small></div>
+    ${mrr.length > 1 ? `<div class="spark-wrap">${sparkLine(mrr)}</div>` : ""}
+    <div class="kvs">${kv("Skool members", fmtInt(b.skool_members))}${kv("Email subs", fmtInt(b.email_subs))}${kv("Videos published", fmtInt(b.videos_published))}</div>
+  </section>
+  <section class="card s6" id="reading" style="--c:var(--read)"><h3><i class="dot"></i>Reading</h3>
+    <div class="num big">${rd.minutes ?? 0}<small>min</small></div>
+    <div class="kvs">${kv("Sessions", fmtInt(rd.sessions))}${kv("Book", esc(rd.last_book || "-"))}${kv("Last session", ago !== null ? `${ago} days ago` : "-")}</div>
+  </section>
+  <section class="card s6" id="body" style="--c:var(--lift)"><h3><i class="dot"></i>Body</h3>
+    <div class="num big">${wt?.weight_lb ?? "-"}<small>lb</small></div>
+    <div class="kvs">${kv("Last weigh-in", wt?.date ? md(toMs(wt.date)) : "-")}${kv("Goal", `${WEIGHT_GOAL} lb`)}${kv("To go", togo !== null && togo > 0 ? `${togo.toFixed(1)} lb` : "-")}</div>
+  </section>
 </div>`;
 }
