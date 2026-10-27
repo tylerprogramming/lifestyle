@@ -190,9 +190,9 @@ export function renderDashboard(d: Payload, generated: string): string {
   const tInfo = dayLog[d.today];
   const tRuns = runs.filter((r) => r.date === d.today);
   const t = calTarget(tInfo, tRuns, weight);
-  const cal = Math.trunc(Number(ts.cal ?? 0));
-  const protein = Math.trunc(Number(ts.protein ?? 0));
-  const water = Math.trunc(Number(ts.water ?? 0));
+  const cal = Math.round(Number(ts.cal ?? 0));
+  const protein = Math.round(Number(ts.protein ?? 0));
+  const water = Math.round(Number(ts.water ?? 0));
   const ranMi = tRuns.reduce((a, r) => a + r.mi, 0);
   const plannedMi = (tInfo?.plan ?? []).filter((p) => p.kind === "run").reduce((a, p) => a + (p.mi ?? 0), 0);
   const miTxt = (mi: number) => mi.toFixed(2).replace(/\.?0+$/, "");
