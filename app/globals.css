@@ -332,24 +332,39 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
 }
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
-  .side{position:sticky;top:0;z-index:5;height:auto;flex-direction:row;align-items:center;gap:10px;padding:10px 12px;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+  /* Phone: a compact top bar (brand + color swatches) and a bottom tab bar for the nav */
+  .side{position:sticky;top:0;z-index:5;height:auto;flex-direction:row;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top));border-right:0;border-bottom:1px solid var(--line);overflow:visible}
+  .brand{padding:0}
   .brand span,.nav-h,.side-foot .streak,.side-foot .side-sub{display:none}
-  .brand{padding:0 6px 0 0;flex:none}
-  .nav{flex-direction:row;gap:2px}
-  .nav a{white-space:nowrap;padding:7px 10px}
+  .nav{position:fixed;left:0;right:0;bottom:0;z-index:6;flex-direction:row;gap:0;background:var(--side);border-top:1px solid var(--line);padding:6px 6px max(6px,env(safe-area-inset-bottom))}
+  .nav a{flex:1;flex-direction:column;justify-content:center;gap:4px;min-height:52px;padding:6px 2px;font-size:11px;text-align:center;white-space:nowrap;border-radius:10px}
+  .nav a i{width:7px;height:7px}
   .nav a em{display:none}
+  .nav a.on{box-shadow:none}
   .side-foot{margin:0;padding:0;border:0;flex:none}
-  .themes{margin:0;grid-template-columns:repeat(4,22px)}
-  .main{padding:18px 14px 48px}
+  .themes{margin:0;grid-template-columns:repeat(4,32px);gap:8px}
+  .themes button{height:32px;border-radius:8px}
+  .main{padding:18px 14px calc(84px + env(safe-area-inset-bottom))}
   .top{flex-wrap:wrap}
+  .card h3 .link,.dv-run-h a{display:inline-flex;align-items:center;min-height:44px;margin:-13px -8px -13px auto;padding:0 8px}
+  .fchip{min-height:40px;padding:0 14px}
   .hero{grid-template-columns:1fr;justify-items:center;gap:20px;padding:20px}
   .legend-r{width:100%}
+  .legend-r>div{grid-template-columns:10px minmax(0,1fr)}
+  .legend-r em{grid-column:2;text-align:left;max-width:none;margin-top:-8px}
+  .top .pill{display:none}
   .goals-c .gl{grid-template-columns:1fr}
   .kpis,.bests{grid-template-columns:repeat(2,1fr)}
+  .dv-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .dv-stat{padding:8px 10px}
+  .dv-stat b{font-size:17px}
+  .dv-stat span{font-size:10px}
   .dv-macros{grid-template-columns:1fr}
+  .dv-nav .x{width:44px;height:44px}
   .hm{min-width:700px}
   .lg{display:none}
   .sheet-in{padding:0 16px 24px} .dv-top{margin:0 -16px;padding:18px 16px 12px}
+  .dv-top.page{margin:0 0 4px;padding:0 0 14px}
   .dv-top h2{font-size:21px}
 }
 @media (prefers-reduced-motion:reduce){

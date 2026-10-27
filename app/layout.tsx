@@ -1,10 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DEFAULT_THEME, THEMES } from "@/lib/shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Lifestyle OS",
   robots: { index: false, follow: false },
+  appleWebApp: { capable: true, title: "Lifestyle", statusBarStyle: "black-translucent" },
+};
+
+// viewport-fit=cover lets the phone tab bar sit above the home indicator (safe-area insets).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#191d27",
 };
 
 // Apply the saved color scheme before first paint so there is no flash.
