@@ -140,7 +140,35 @@ export function attachDashboard(doc: Document): () => void {
   markTheme();
   doc.addEventListener("click", onTheme);
 
+  // Rings: hovering/focusing a ring or its legend row highlights it and swaps
+  // the center text to that metric. Tapping (touch) toggles the same state.
+  let pinned: string | null = null;
+  const hero = doc.querySelector<HTMLElement>(".hero");
+  const showRing = (key: string | null) => {
+    if (!hero) return;
+    const k = key ?? pinned;
+    hero.classList.toggle("focus", !!k);
+    hero.querySelectorAll<HTMLElement | SVGElement>("[data-ring]").forEach((el) => el.classList.toggle("hl", el.getAttribute("data-ring") === k));
+    hero.querySelectorAll<HTMLElement>(".rc").forEach((el) => el.classList.toggle("on", el.dataset.for === (k ?? "def")));
+  };
+  const ringOf = (t: EventTarget | null) => (t instanceof Element ? t.closest("[data-ring]")?.getAttribute("data-ring") ?? null : null);
+  const onOver = (e: Event) => { const k = ringOf(e.target); if (k) showRing(k); };
+  const onOut = (e: Event) => { const to = (e as MouseEvent).relatedTarget; if (ringOf(e.target) && ringOf(to) !== ringOf(e.target)) showRing(ringOf(to)); };
+  const onRingClick = (e: Event) => { const k = ringOf(e.target); if (!k) return; pinned = pinned === k ? null : k; showRing(pinned); };
+  if (hero) {
+    hero.addEventListener("mouseover", onOver);
+    hero.addEventListener("mouseout", onOut);
+    hero.addEventListener("focusin", onOver);
+    hero.addEventListener("focusout", () => showRing(null));
+    hero.addEventListener("click", onRingClick);
+    showRing(null);
+  }
+
   return () => {
+    hero?.removeEventListener("mouseover", onOver);
+    hero?.removeEventListener("mouseout", onOut);
+    hero?.removeEventListener("focusin", onOver);
+    hero?.removeEventListener("click", onRingClick);
     doc.removeEventListener("click", onTheme);
     doc.removeEventListener("click", onClick);
     doc.removeEventListener("keydown", onKey);

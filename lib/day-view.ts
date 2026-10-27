@@ -1,11 +1,11 @@
 // Day view: everything that happened (or is planned) on one calendar day.
-// Pure HTML strings, used by the client to fill the day dialog when a heatmap
-// square, a recent run or the Today panel is clicked. Runs come from run_log;
-// food, lifts, plan, meals, water, weight and check-in come from day_log.
+// Pure HTML strings. Used by the client to fill the day dialog (heatmap
+// squares, recent runs) and server-side for the /plan page. Runs come from
+// run_log; food, lifts, plan, meals, weight and check-in come from day_log.
 
 import type { DayInfo, MealItem, PlanItem, Run } from "./types";
-import { BURN_PER_LB_MI, CAL_TARGET, PROTEIN_TARGET, WATER_GOAL } from "./targets";
-import { bucketOf, dur, esc, fmtInt, MONTHS, pace, toMs, WEEKDAYS } from "./util";
+import { BURN_PER_LB_MI, CAL_TARGET, PROTEIN_TARGET } from "./targets";
+import { addDays, bucketOf, dur, esc, fmtInt, MONTHS, pace, toIso, toMs, WEEKDAYS } from "./util";
 
 /** What the client needs to render any day. Serialized into the page as JSON. */
 export type DayData = {
@@ -96,13 +96,17 @@ function planList(items: PlanItem[], future: boolean): string {
 function mealList(items: MealItem[], future: boolean): string {
   return `<ul class="dv-list">${items.map((m) => {
     const state = m.done ? "done" : future ? "todo" : "missed";
-    const name = m.done && m.actual ? m.actual : m.name;
+    const full = m.done && m.actual ? m.actual : m.name;
+    // "Name (prep note) more note" -> name on the line, the rest underneath
+    const paren = full.match(/^(.*?)\s*\((.+)$/);
+    const name = paren ? paren[1] : full;
+    const prep = paren ? `<div class="dv-note">${esc(paren[2].replace(/\)\s*\.?\s*/, ". ").replace(/[.\s]+$/, ""))}</div>` : "";
     const cal = m.done && m.acal != null ? m.acal : m.cal;
     const p = m.done && m.ap != null ? m.ap : m.p;
-    const swapped = m.done && m.actual && m.actual !== m.name ? `<div class="dv-note">planned: ${esc(m.name)}</div>` : "";
+    const swapped = m.done && m.actual && m.actual !== m.name ? `<div class="dv-note">planned: ${esc(m.name.replace(/\s*\(.*$/, ""))}</div>` : "";
     return `<li class="${state}"><span class="dv-k">${m.done ? "&#10003;" : ""}</span><div>
       <div class="dv-li-h"><span class="dv-tag">${MEAL_LABEL[m.code] ?? esc(m.code)}</span><b>${esc(name)}</b><em>${cal != null ? `${fmtInt(cal)} cal` : ""}${p != null ? ` &middot; ${Math.round(p)} g` : ""}</em></div>
-      ${swapped}
+      ${prep}${swapped}
     </div></li>`;
   }).join("")}</ul>`;
 }
@@ -115,7 +119,7 @@ function noteItems(notes: string): string[] {
     .filter(Boolean);
 }
 
-export function renderDay(iso: string, data: DayData): string {
+export function renderDay(iso: string, data: DayData, page = false): string {
   const info = data.days[iso] ?? {};
   const runs = data.runs.filter((r) => r.date === iso);
   const future = iso > data.today;
@@ -160,7 +164,6 @@ export function renderDay(iso: string, data: DayData): string {
 
   // ---- body ----
   const body: string[] = [];
-  if (info.water != null) body.push(stat("water", `${Math.round(info.water)} oz`, `goal ${WATER_GOAL}`));
   if (info.weight != null) body.push(stat("weight", `${info.weight} lb`));
   if (info.checkin) {
     const c = info.checkin;
@@ -177,9 +180,18 @@ export function renderDay(iso: string, data: DayData): string {
   if (info.lifts?.length || info.flags?.lift) summary.push("lifted");
   if (info.food?.cal) summary.push(`${fmtInt(info.food.cal)} cal, ${Math.round(info.food.p ?? 0)} g protein`);
 
+  const head = `<div><div class="eyebrow">Day</div><h2 id="m-day-h">${dayTitle(iso)}${badge}</h2>${summary.length ? `<div class="dv-sum">${summary.join(" &middot; ")}</div>` : ""}</div>`;
+  const content = blocks.length ? blocks.join("") : `<div class="dv-empty big">Nothing logged ${future ? "or planned " : ""}on this day.</div>`;
+
+  if (page) {
+    // Full-page version (/plan): prev/next are plain links, no close button.
+    const step = (n: number) => toIso(addDays(toMs(iso), n));
+    const link = (n: number, label: string, sym: string) => `<a class="x" href="/plan${step(n) === data.today ? "" : `?d=${step(n)}`}" aria-label="${label}">${sym}</a>`;
+    return `<div class="dv-top page">${head}<div class="dv-nav">${isToday ? "" : '<a class="x today-btn" href="/plan">Today</a>'}${link(-1, "Previous day", "&lsaquo;")}${link(1, "Next day", "&rsaquo;")}</div></div>${content}`;
+  }
   return `<div class="dv-top">
-      <div><div class="eyebrow">Day</div><h2 id="m-day-h">${dayTitle(iso)}${badge}</h2>${summary.length ? `<div class="dv-sum">${summary.join(" &middot; ")}</div>` : ""}</div>
+      ${head}
       <div class="dv-nav"><button type="button" class="x" data-day-step="-1" aria-label="Previous day">&lsaquo;</button><button type="button" class="x" data-day-step="1" aria-label="Next day">&rsaquo;</button><form method="dialog"><button class="x" aria-label="Close">&times;</button></form></div>
     </div>
-    ${blocks.length ? blocks.join("") : `<div class="dv-empty big">Nothing logged ${future ? "or planned " : ""}on this day.</div>`}`;
+    ${content}`;
 }

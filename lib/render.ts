@@ -1,10 +1,10 @@
 // Lifestyle OS page renderers. Pure view layer: takes the query payload and
 // returns HTML strings for the main column. No I/O, no secrets.
 //
-// Home: rings for calories / protein / water next to this week's goals, then
-// today's plan beside running, then the year of days. Every day square, recent
-// run and "Open today" opens the day dialog for that date only. Colors come
-// from CSS variables per metric (--cal, --pro, --water, --run, ...), so the
+// Home: rings for calories / protein / today's workouts next to this week's
+// goals, then today's plan beside running, then the year of days. Every day
+// square and recent run opens the day dialog for that date only. Colors come
+// from CSS variables per metric (--cal, --pro, --run, ...), so the
 // color scheme switcher restyles everything, charts included.
 
 import type { Day, Payload } from "./types";
@@ -12,11 +12,11 @@ import { analyzeRuns } from "./fitness";
 import { calTarget, type DayData } from "./day-view";
 import { planWeek } from "./goals";
 import { renderGoalsCompact } from "./goals-view";
-import { PROTEIN_TARGET, WATER_GOAL, WEIGHT_GOAL } from "./targets";
+import { PROTEIN_TARGET, WEIGHT_GOAL } from "./targets";
 import { addDays, bd, daysBetween, dur, esc, fmtInt, md, pace, sundayOf, toIso, toMs, MONTHS, WEEKDAYS } from "./util";
 
 export { esc, pace } from "./util";
-export { CAL_TARGET, PROTEIN_TARGET, WATER_GOAL, WEIGHT_GOAL } from "./targets";
+export { CAL_TARGET, PROTEIN_TARGET, WEIGHT_GOAL } from "./targets";
 
 const GRID_WEEKS = 53; // a full year, like GitHub
 const CONSISTENCY_WINDOW = 30;
@@ -48,18 +48,23 @@ function sparkLine(raw: (number | null | undefined)[], w = 160, h = 32, pad = 3)
     `<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="currentColor"/></svg>`;
 }
 
-/** Concentric progress rings, outermost first. Colors are CSS variable names. */
-function rings(items: { v: number; max: number; c: string }[]): string {
+/**
+ * Concentric progress rings, outermost first. Each ring is a <g data-ring> so
+ * hovering (or tapping) it highlights that ring, its legend row and the
+ * matching center text (see lib/behavior.ts). Colors are CSS variable names.
+ */
+function rings(items: { key: string; v: number; max: number; c: string; title: string }[]): string {
   const radii = [86, 66, 46];
   const arcs = items.map((it, i) => {
     const r = radii[i];
     const C = 2 * Math.PI * r;
     const frac = it.max ? Math.min(Math.max(it.v / it.max, 0), 1) : 0;
-    const track = `<circle class="rt" cx="100" cy="100" r="${r}" style="stroke:var(${it.c})"/>`;
-    if (!frac) return track;
-    return track + `<circle class="rv" cx="100" cy="100" r="${r}" style="stroke:var(${it.c})" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - frac)).toFixed(1)}"/>`;
+    const val = frac
+      ? `<circle class="rv" cx="100" cy="100" r="${r}" style="stroke:var(${it.c})" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - frac)).toFixed(1)}"/>`
+      : "";
+    return `<g class="ring" data-ring="${it.key}"><title>${esc(it.title)}</title><circle class="rt" cx="100" cy="100" r="${r}" style="stroke:var(${it.c})"/>${val}</g>`;
   });
-  return `<svg class="rings-svg" viewBox="0 0 200 200" aria-hidden="true">${arcs.join("")}</svg>`;
+  return `<svg class="rings-svg" viewBox="0 0 200 200" role="img" aria-label="${esc(items.map((x) => x.title).join("; "))}">${arcs.join("")}</svg>`;
 }
 
 // ---------- stats ----------
@@ -99,15 +104,19 @@ export function computeStats(d: Payload): Stats {
   return { streak, best, daysSince, winActive, consistency };
 }
 
-/** Day data for the client-side day dialog, as a JSON <script> (`<` escaped so it can't close the tag). */
-export function dayDataScript(d: Payload): string {
-  const data: DayData = {
+/** What the day view needs: today, latest weight, per-day detail and every run. */
+export function dayData(d: Payload): DayData {
+  return {
     today: d.today,
     weight: d.fitness?.weight?.weight_lb != null ? Number(d.fitness.weight.weight_lb) : null,
     days: d.day_log ?? {},
     runs: d.run_log ?? [],
   };
-  return `<script type="application/json" id="day-data">${JSON.stringify(data).replace(/</g, "\\u003c")}</script>`;
+}
+
+/** Day data for the client-side day dialog, as a JSON <script> (`<` escaped so it can't close the tag). */
+export function dayDataScript(d: Payload): string {
+  return `<script type="application/json" id="day-data">${JSON.stringify(dayData(d)).replace(/</g, "\\u003c")}</script>`;
 }
 
 /** The day dialog shell plus its data. Any page with [data-day] elements needs this. */
@@ -192,27 +201,39 @@ export function renderDashboard(d: Payload, generated: string): string {
   const t = calTarget(tInfo, tRuns, weight);
   const cal = Math.round(Number(ts.cal ?? 0));
   const protein = Math.round(Number(ts.protein ?? 0));
-  const water = Math.round(Number(ts.water ?? 0));
-  const ranMi = tRuns.reduce((a, r) => a + r.mi, 0);
-  const plannedMi = (tInfo?.plan ?? []).filter((p) => p.kind === "run").reduce((a, p) => a + (p.mi ?? 0), 0);
   const miTxt = (mi: number) => mi.toFixed(2).replace(/\.?0+$/, "");
 
+  // ---- workouts: today's planned run/lift sessions; a rest day counts as done ----
+  const sessions = (tInfo?.plan ?? []).filter((p) => p.kind !== "rest");
+  const unplanned = tRuns.length + (tInfo?.flags?.lift ? 1 : 0); // logged without a plan
+  const wTotal = sessions.length || unplanned;
+  const wDone = sessions.length ? sessions.filter((p) => p.done).length : unplanned;
+  const rest = wTotal === 0;
+  const runBit = tRuns.length === 1 ? ` (${miTxt(tRuns[0].mi)} mi, ${pace(tRuns[0].pace)}/mi)` : "";
+  const wNames = sessions.length
+    ? sessions.map((p) => `${p.done ? "&#10003; " : ""}${esc(p.focus ?? p.kind ?? "")}${p.done && p.kind === "run" ? runBit : ""}`).join(" &middot; ")
+    : rest ? "nothing planned" : `${tRuns.length ? `run${runBit}` : ""}${tRuns.length && tInfo?.flags?.lift ? " &middot; " : ""}${tInfo?.flags?.lift ? "lift" : ""}`;
+  const wTitle = rest ? "Rest day" : `${wDone} of ${wTotal} workouts done`;
+
   // ---- rings ----
+  const calPct = Math.round((cal / t.target) * 100);
   const togo = (v: number, max: number, unit: string) => (v >= max ? '<span class="pos">goal hit</span>' : `${fmtInt(max - v)}${unit} to go`);
-  const runRow = ranMi
-    ? `<div style="--c:var(--run)"><i></i><span><b class="num">${miTxt(ranMi)}</b> mi run today</span><em>${tRuns.length === 1 ? `${pace(tRuns[0].pace)}/mi &middot; ${dur(tRuns[0].min)}` : `${tRuns.length} runs`}</em></div>`
-    : `<div style="--c:var(--run)"><i></i><span>${plannedMi ? `<b class="num">${miTxt(plannedMi)}</b> mi run planned` : "No run today"}</span><em></em></div>`;
+  const ctr = (key: string, big: string, small: string) => `<div class="rc" data-for="${key}"><b class="num">${big}</b><span>${small}</span></div>`;
   const hero = `<section class="card s8 hero" aria-label="Today">
     <div class="rings-box">${rings([
-      { v: cal, max: t.target, c: "--cal" },
-      { v: protein, max: PROTEIN_TARGET, c: "--pro" },
-      { v: water, max: WATER_GOAL, c: "--water" },
-    ])}<div class="rings-ctr"><b class="num">${Math.round((cal / t.target) * 100)}%</b><span>of calories</span></div></div>
+      { key: "cal", v: cal, max: t.target, c: "--cal", title: `Calories: ${fmtInt(cal)} of ${fmtInt(t.target)}` },
+      { key: "pro", v: protein, max: PROTEIN_TARGET, c: "--pro", title: `Protein: ${protein} of ${PROTEIN_TARGET} g` },
+      { key: "work", v: rest ? 1 : wDone, max: rest ? 1 : wTotal, c: "--run", title: `Workouts: ${wTitle}` },
+    ])}<div class="rings-ctr">
+      ${ctr("def", `${calPct}%`, "calories")}
+      ${ctr("cal", fmtInt(cal), `of ${fmtInt(t.target)}`)}
+      ${ctr("pro", `${protein}g`, `of ${PROTEIN_TARGET}g`)}
+      ${ctr("work", rest ? "Rest" : `${wDone}/${wTotal}`, rest ? "day" : "workouts")}
+    </div></div>
     <div class="legend-r">
-      <div style="--c:var(--cal)"><i></i><span><b class="num">${fmtInt(cal)}</b> / ${fmtInt(t.target)} calories</span><em>${cal > t.target ? `${fmtInt(cal - t.target)} over` : `${fmtInt(t.target - cal)} left`}</em></div>
-      <div style="--c:var(--pro)"><i></i><span><b class="num">${protein}</b> / ${PROTEIN_TARGET} g protein</span><em>${togo(protein, PROTEIN_TARGET, " g")}</em></div>
-      <div style="--c:var(--water)"><i></i><span><b class="num">${water}</b> / ${WATER_GOAL} oz water</span><em>${togo(water, WATER_GOAL, " oz")}</em></div>
-      ${runRow}
+      <div data-ring="cal" tabindex="0" style="--c:var(--cal)"><i></i><span><b class="num">${fmtInt(cal)}</b> / ${fmtInt(t.target)} calories</span><em>${cal > t.target ? `${fmtInt(cal - t.target)} over` : `${fmtInt(t.target - cal)} left`}</em></div>
+      <div data-ring="pro" tabindex="0" style="--c:var(--pro)"><i></i><span><b class="num">${protein}</b> / ${PROTEIN_TARGET} g protein</span><em>${togo(protein, PROTEIN_TARGET, " g")}</em></div>
+      <div data-ring="work" tabindex="0" style="--c:var(--run)"><i></i><span>${rest ? "<b>Rest day</b>" : `<b class="num">${wDone}</b> / ${wTotal} workouts`}</span><em>${wNames}</em></div>
       ${t.burn ? `<p class="note">Calorie target is ${fmtInt(t.target - t.burn)} plus ${fmtInt(t.burn)} for ${t.planned ? "the planned " : "today's "}${miTxt(t.mi)} mi run.</p>` : ""}
     </div>
   </section>`;
