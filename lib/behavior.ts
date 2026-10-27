@@ -1,40 +1,50 @@
 // Dashboard interactions, attached once to the server-rendered HTML.
 // Plain DOM, no framework: the markup comes from lib/render.ts as a string.
-//   [data-open="<dialog id>"]   opens that dialog (click, Enter, Space)
-//   [data-run-date="YYYY-MM-DD"] also scrolls to and highlights that run
-//   [data-filter="<bucket>"]    filters the run log rows by data-b
-//   #running in the URL opens the fitness modal on load
+//   [data-day="YYYY-MM-DD"]      opens the day dialog for that date only
+//   [data-day-step="-1|1"]       moves the open day dialog back/forward a day
+//   [data-filter="<bucket>"]     filters the run log rows by data-b (/running)
+//   /running?d=YYYY-MM-DD        scrolls to and highlights that day's run
+//   #day=YYYY-MM-DD in the URL   opens that day on load (shareable)
+// Day data is read from <script type="application/json" id="day-data">.
 // Returns a cleanup function.
 
-export function attachDashboard(doc: Document): () => void {
-  const HASH: Record<string, string> = { "m-fitness": "#running" };
+import { renderDay, type DayData } from "./day-view";
+import { addDays, toIso, toMs } from "./util";
 
-  const setFilter = (dlg: Element, key: string) => {
-    dlg.querySelectorAll<HTMLElement>("[data-filter]").forEach((b) => {
+export function attachDashboard(doc: Document): () => void {
+  let data: DayData | null = null;
+  const dataEl = doc.getElementById("day-data");
+  if (dataEl?.textContent) {
+    try {
+      data = JSON.parse(dataEl.textContent) as DayData;
+    } catch {
+      data = null;
+    }
+  }
+  const dlg = doc.getElementById("m-day") as HTMLDialogElement | null;
+  const body = doc.getElementById("m-day-body");
+  let current: string | null = null;
+
+  const openDay = (iso: string) => {
+    if (!data || !dlg || !body || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return;
+    current = iso;
+    body.innerHTML = renderDay(iso, data);
+    dlg.scrollTop = 0;
+    if (!dlg.open) dlg.showModal();
+    doc.documentElement.classList.add("modal-open");
+    history.replaceState(null, "", `#day=${iso}`);
+    doc.querySelectorAll(".cell.sel").forEach((c) => c.classList.remove("sel"));
+    doc.querySelector(`.cell[data-day="${iso}"]`)?.classList.add("sel");
+  };
+
+  const setFilter = (scope: ParentNode, key: string) => {
+    scope.querySelectorAll<HTMLElement>("[data-filter]").forEach((b) => {
       b.classList.toggle("on", b.dataset.filter === key);
       b.setAttribute("aria-pressed", String(b.dataset.filter === key));
     });
-    dlg.querySelectorAll<HTMLElement>("tbody tr[data-b]").forEach((tr) => {
+    scope.querySelectorAll<HTMLElement>("tbody tr[data-b]").forEach((tr) => {
       tr.hidden = key !== "all" && tr.dataset.b !== key;
     });
-  };
-
-  const open = (id: string, runDate?: string) => {
-    const dlg = doc.getElementById(id) as HTMLDialogElement | null;
-    if (!dlg) return;
-    if (!dlg.open) dlg.showModal();
-    doc.documentElement.classList.add("modal-open");
-    if (HASH[id] && location.hash !== HASH[id]) history.replaceState(null, "", HASH[id]);
-    if (runDate) {
-      setFilter(dlg, "all");
-      const row = dlg.querySelector<HTMLElement>(`tr[data-date="${runDate}"]`);
-      if (row) {
-        row.scrollIntoView({ block: "center" });
-        row.classList.remove("flash");
-        void row.offsetWidth; // restart the animation
-        row.classList.add("flash");
-      }
-    }
   };
 
   const onClick = (e: MouseEvent) => {
@@ -46,46 +56,75 @@ export function attachDashboard(doc: Document): () => void {
       if (!inside) t.close();
       return;
     }
-    const f = t.closest<HTMLElement>("[data-filter]");
-    if (f) {
-      const dlg = f.closest("dialog");
-      if (dlg) setFilter(dlg, f.dataset.filter!);
+    const step = t.closest<HTMLElement>("[data-day-step]");
+    if (step && current) {
+      openDay(toIso(addDays(toMs(current), Number(step.dataset.dayStep))));
       return;
     }
-    const o = t.closest<HTMLElement>("[data-open]");
-    if (o) open(o.dataset.open!, o.dataset.runDate);
+    const f = t.closest<HTMLElement>("[data-filter]");
+    if (f) {
+      setFilter(f.closest("section") ?? doc, f.dataset.filter!);
+      return;
+    }
+    const d = t.closest<HTMLElement>("[data-day]");
+    if (d && !t.closest("a")) openDay(d.dataset.day!);
   };
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    const o = (e.target as HTMLElement).closest<HTMLElement>("[data-open]");
-    if (o && !(e.target instanceof HTMLButtonElement)) {
+    if (dlg?.open && current && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
-      open(o.dataset.open!, o.dataset.runDate);
+      openDay(toIso(addDays(toMs(current), e.key === "ArrowLeft" ? -1 : 1)));
+      return;
+    }
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const d = (e.target as HTMLElement).closest<HTMLElement>("[data-day]");
+    if (d && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLAnchorElement)) {
+      e.preventDefault();
+      openDay(d.dataset.day!);
     }
   };
 
   const onClose = (e: Event) => {
     if (!(e.target instanceof HTMLDialogElement)) return;
     doc.documentElement.classList.remove("modal-open");
-    if (Object.values(HASH).includes(location.hash)) history.replaceState(null, "", location.pathname + location.search);
+    current = null;
+    doc.querySelectorAll(".cell.sel").forEach((c) => c.classList.remove("sel"));
+    if (location.hash.startsWith("#day=")) history.replaceState(null, "", location.pathname + location.search);
   };
 
   doc.addEventListener("click", onClick);
   doc.addEventListener("keydown", onKey);
   doc.addEventListener("close", onClose, true); // "close" doesn't bubble; capture it
 
-  const openFromHash = () => {
-    const hit = Object.entries(HASH).find(([, h]) => h === location.hash);
-    if (hit) open(hit[0]);
+  const fromUrl = () => {
+    // Old links to the Running modal now go to the Running page.
+    if (location.hash === "#running") {
+      location.replace("/running");
+      return;
+    }
+    const m = location.hash.match(/^#day=(\d{4}-\d{2}-\d{2})$/);
+    if (m) openDay(m[1]);
   };
-  openFromHash();
-  window.addEventListener("hashchange", openFromHash);
+  fromUrl();
+  window.addEventListener("hashchange", fromUrl);
+
+  // /running?d=YYYY-MM-DD: highlight that day's run(s) in the log.
+  const want = new URLSearchParams(location.search).get("d");
+  if (want) {
+    const rows = doc.querySelectorAll<HTMLElement>(`tr[data-date="${CSS.escape(want)}"]`);
+    rows[0]?.scrollIntoView({ block: "center" });
+    rows.forEach((r) => r.classList.add("flash"));
+  }
+
+  // Heatmap scrolls horizontally on narrow screens: start at the most recent weeks.
+  doc.querySelectorAll<HTMLElement>(".hm-scroll").forEach((s) => {
+    s.scrollLeft = s.scrollWidth;
+  });
 
   return () => {
     doc.removeEventListener("click", onClick);
     doc.removeEventListener("keydown", onKey);
     doc.removeEventListener("close", onClose, true);
-    window.removeEventListener("hashchange", openFromHash);
+    window.removeEventListener("hashchange", fromUrl);
   };
 }

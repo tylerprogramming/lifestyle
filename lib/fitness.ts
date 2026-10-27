@@ -3,14 +3,15 @@
 // the live rows, nothing is hardcoded.
 
 import type { Run } from "./types";
-import { addDays, daysBetween, dur, esc, fmtMi, md, mondayOf, MONTHS, pace, toMs } from "./util";
+import { addDays, bucketOf, daysBetween, dur, esc, fmtMi, md, mondayOf, MONTHS, pace, toMs, type Bucket } from "./util";
+
+export { bucketOf } from "./util";
 
 const GREEN = "#39d353";
 const PURPLE = "#cba6f7";
 const AMBER = "#e3b341";
 const LINE = "#21262d";
 
-type Bucket = "short" | "5k" | "10k" | "long" | "other";
 const BUCKETS: [Bucket | "all", string][] = [
   ["all", "All"],
   ["short", "Under 2.5 mi"],
@@ -18,14 +19,6 @@ const BUCKETS: [Bucket | "all", string][] = [
   ["10k", "10K"],
   ["long", "7 mi +"],
 ];
-
-export function bucketOf(mi: number): Bucket {
-  if (mi >= 7) return "long";
-  if (mi >= 6.1 && mi <= 6.35) return "10k";
-  if (mi >= 3.0 && mi <= 3.3) return "5k";
-  if (mi < 2.5) return "short";
-  return "other";
-}
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 /** Distance-weighted pace (sec/mi) over a set of runs with a duration. */
@@ -256,7 +249,8 @@ function insights(s: RunStats, todayIso: string): string[] {
   return out;
 }
 
-export function renderRunModal(runs: Run[], todayIso: string): { modal: string; weekly: string; stats: RunStats } {
+/** The full Running page body (served at /running). Rows carry data-date so /running?d=YYYY-MM-DD can highlight one. */
+export function renderRunning(runs: Run[], todayIso: string): { body: string; weekly: string; stats: RunStats } {
   const s = analyzeRuns(runs, todayIso);
   const totalMi = sum(runs.map((r) => r.mi));
   const yr = todayIso.slice(0, 4);
@@ -276,32 +270,29 @@ export function renderRunModal(runs: Run[], todayIso: string): { modal: string; 
   const ins = insights(s, todayIso).map((t) => `<li>${t}</li>`).join("");
   const weekly = weeklyChart(s.weekly);
 
-  const modal = `<dialog id="m-fitness" class="sheet" aria-labelledby="m-fitness-h">
-  <div class="sheet-in">
-    <div class="sheet-top">
-      <div><div class="eyebrow">Fitness</div><h2 id="m-fitness-h">Running</h2></div>
-      <form method="dialog"><button class="x" aria-label="Close">&times;</button></form>
-    </div>
-    <div class="kpis">
-      <div><b>${fmtMi(totalMi)}</b><span>mi all time</span></div>
-      <div><b>${runs.length}</b><span>runs</span></div>
-      ${Math.abs(ytd - totalMi) > 0.05
-        ? `<div><b>${fmtMi(ytd)}</b><span>mi in ${yr}</span></div>`
-        : `<div><b>${fmtMi(last30)}</b><span>mi last 30 days</span></div>`}
-      <div><b>${fmtMi(sum(mtd.map((r) => r.mi)))}</b><span>mi this month &middot; ${mtd.length} runs</span></div>
-    </div>
-    ${ins ? `<ul class="insights">${ins}</ul>` : ""}
-    <section><h3>Bests</h3><div class="bests">${s.bests.map(bestTile).join("")}</div></section>
-    <section><h3>Every run <span class="h3s">pace, faster is higher &middot; dot size = distance &middot; line = 5-run average</span></h3>${paceChart(runs)}</section>
-    <div class="two">
-      <section><h3>Weekly miles <span class="h3s">26 weeks</span></h3>${weekly}</section>
-      <section><h3>Cadence vs pace <span class="h3s">steps/min${s.cadence.r !== null ? ` &middot; r = ${s.cadence.r.toFixed(2)}` : ""}</span></h3>${cadenceChart(runs)}</section>
-    </div>
-    <section><h3>Log</h3><div class="fchips" role="group" aria-label="Filter runs">${chips}</div>
-      <div class="tbl-wrap"><table class="runs"><thead><tr><th>Date</th><th>Run</th><th class="n">Mi</th><th class="n">Time</th><th class="n">Pace</th><th class="n">HR</th><th class="n">Cad</th><th class="n">Elev</th></tr></thead><tbody>${rows}</tbody></table></div>
-    </section>
+  const body = `<section class="running">
+  <div class="page-top">
+    <div><a class="back" href="/">&larr; Dashboard</a><div class="eyebrow">Fitness</div><h1>Running</h1></div>
   </div>
-</dialog>`;
-  return { modal, weekly, stats: s };
+  <div class="kpis">
+    <div><b>${fmtMi(totalMi)}</b><span>mi all time</span></div>
+    <div><b>${runs.length}</b><span>runs</span></div>
+    ${Math.abs(ytd - totalMi) > 0.05
+      ? `<div><b>${fmtMi(ytd)}</b><span>mi in ${yr}</span></div>`
+      : `<div><b>${fmtMi(last30)}</b><span>mi last 30 days</span></div>`}
+    <div><b>${fmtMi(sum(mtd.map((r) => r.mi)))}</b><span>mi this month &middot; ${mtd.length} runs</span></div>
+  </div>
+  ${ins ? `<ul class="insights">${ins}</ul>` : ""}
+  <section class="panel"><h3>Bests</h3><div class="bests">${s.bests.map(bestTile).join("")}</div></section>
+  <section class="panel"><h3>Every run <span class="h3s">pace, faster is higher &middot; dot size = distance &middot; line = 5-run average</span></h3>${paceChart(runs)}</section>
+  <div class="two">
+    <section class="panel"><h3>Weekly miles <span class="h3s">26 weeks</span></h3>${weekly}</section>
+    <section class="panel"><h3>Cadence vs pace <span class="h3s">steps/min${s.cadence.r !== null ? ` &middot; r = ${s.cadence.r.toFixed(2)}` : ""}</span></h3>${cadenceChart(runs)}</section>
+  </div>
+  <section class="panel"><h3>Log</h3><div class="fchips" role="group" aria-label="Filter runs">${chips}</div>
+    <div class="tbl-wrap"><table class="runs"><thead><tr><th>Date</th><th>Run</th><th class="n">Mi</th><th class="n">Time</th><th class="n">Pace</th><th class="n">HR</th><th class="n">Cad</th><th class="n">Elev</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </section>
+</section>`;
+  return { body, weekly, stats: s };
 }
 
