@@ -10,12 +10,15 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 |---|---|
 | `proxy.ts` | Password gate. Redirects to `/login` unless the `ls_session` cookie is valid. |
 | `app/login/` | Login form plus a server action that checks `DASHBOARD_PASSWORD` in constant time and sets a signed, httpOnly cookie that lasts 30 days. |
-| `app/page.tsx` | Re-checks the session, runs the query, renders the dashboard. |
+| `app/page.tsx` | Today: rings, goals, plan, running, year of days. |
+| `app/shell-page.tsx` | Wraps every page in the sidebar shell (auth check + live query via `lib/page-data.ts`). |
 | `app/running/page.tsx` | The Running page: every run, charts, bests and the filterable log. |
+| `app/goals/page.tsx`, `app/work/page.tsx` | Weekly goals in full; content, business, reading and weight. |
 | `app/dashboard-behavior.tsx` | Client component that wires up the server-rendered HTML (day dialog, filters, deep links). |
 | `app/api/goals/route.ts` | This week's goals as JSON for the Monday Slack card (Bearer `GOALS_TOKEN`). |
 | `lib/query.ts` | The dashboard SQL. "Today" is America/New_York. Returns every run as `run_log` and per-day detail (food, lifts, plan, meals, water, weight, check-in) as `day_log`, a year back to a week ahead. |
-| `lib/render.ts` | Dashboard HTML. |
+| `lib/render.ts` | Today and Work page HTML. |
+| `lib/shell.ts` | Sidebar shell and the color scheme list. |
 | `lib/day-view.ts` | The day dialog: everything logged or planned on one date. |
 | `lib/fitness.ts` | Run analysis (bests, weekly miles, comeback, cadence vs pace, 30-day form) and the Running page. |
 | `lib/goals.ts`, `lib/goals-view.ts` | Weekly goals, computed from data logged before each Monday. |
@@ -37,13 +40,9 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 
 ## Dashboard
 
-Every section is full width, ordered from "what do I do now" to the long view:
+A sidebar (Today, Food & plan, Running, Goals, Work & body) with your streak and a color scheme picker at the bottom: Dusk (default), Midnight, Paper or Ember, saved per browser. Each metric keeps one color everywhere: calories, protein, water, running, and so on.
 
-1. **Today**: calories (the target rises by the net burn of today's run, 0.63 cal per lb per mile), protein, water, miles, check-in, then today's training plan, meal plan and nudges.
-2. **This week**: the six weekly goals.
-3. **Activity**: a GitHub-style year of days plus the consistency ring and streaks. Click any day, or the next week's planned days, to open just that day.
-4. **Fitness**: totals and bests, 26 weeks of mileage, the latest runs (click one for its day). "All runs" opens `/running`.
-5. **Content, Business, Reading**: one band each.
+**Today** has three rings (calories, protein, water; the calorie target rises by the net burn of today's run, 0.63 cal per lb per mile) with this week's goals beside them, then today's plan and meals next to running, then a GitHub-style year of days. Click any day, a recent run, or "Open today" to see just that day. `/running` has every run, charts and bests; `/goals` has each goal with its reasoning and last week's scorecard; `/work` has content, business, reading and weight.
 
 The day dialog shows that date only: the run with its splits and how it compares to your best and previous run at that distance, lifts, the training plan, food against the day's target, the meal plan, what was logged, water, weight and check-in. Left/right arrows (or the buttons) step a day. `/#day=YYYY-MM-DD` opens a day directly; `/running?d=YYYY-MM-DD` highlights that day's run in the log.
 
