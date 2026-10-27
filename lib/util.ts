@@ -50,5 +50,16 @@ export const md = (ms: number) => {
   const d = new Date(ms);
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 };
+export type Bucket = "short" | "5k" | "10k" | "long" | "other";
+
+/** Distance bucket for a run: 5K and 10K by distance band, 7+ mi is long. */
+export function bucketOf(mi: number): Bucket {
+  if (mi >= 7) return "long";
+  if (mi >= 6.1 && mi <= 6.35) return "10k";
+  if (mi >= 3.0 && mi <= 3.3) return "5k";
+  if (mi < 2.5) return "short";
+  return "other";
+}
+
 export const sundayOf = (ms: number) => addDays(ms, -new Date(ms).getUTCDay());
 export const mondayOf = (ms: number) => addDays(ms, -((new Date(ms).getUTCDay() + 6) % 7));
