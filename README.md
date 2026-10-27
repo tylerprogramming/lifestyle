@@ -11,6 +11,7 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 | `proxy.ts` | Password gate. Redirects to `/login` unless the `ls_session` cookie is valid. |
 | `app/login/` | Login form plus a server action that checks `DASHBOARD_PASSWORD` in constant time and sets a signed, httpOnly cookie that lasts 30 days. |
 | `app/page.tsx` | Today: rings, goals, plan, running, year of days. |
+| `app/plan/page.tsx` | Food & plan: one day as a page (`?d=YYYY-MM-DD` for other days). |
 | `app/shell-page.tsx` | Wraps every page in the sidebar shell (auth check + live query via `lib/page-data.ts`). |
 | `app/running/page.tsx` | The Running page: every run, charts, bests and the filterable log. |
 | `app/goals/page.tsx`, `app/work/page.tsx` | Weekly goals in full; content, business, reading and weight. |
@@ -22,7 +23,7 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 | `lib/day-view.ts` | The day dialog: everything logged or planned on one date. |
 | `lib/fitness.ts` | Run analysis (bests, weekly miles, comeback, cadence vs pace, 30-day form) and the Running page. |
 | `lib/goals.ts`, `lib/goals-view.ts` | Weekly goals, computed from data logged before each Monday. |
-| `lib/targets.ts` | Daily targets (calories, protein, water, weight) and the run-burn rate. Change them here. |
+| `lib/targets.ts` | Daily targets (calories, protein, weight) and the run-burn rate. Change them here. |
 | `lib/behavior.ts` | DOM behavior: `[data-day]` opens that day, arrows step days, log filters, `#day=` and `?d=` deep links. |
 | `lib/util.ts` | Shared date and number formatting. |
 | `lib/session.ts` | HMAC-SHA256 session cookie (Web Crypto). |
@@ -40,11 +41,11 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 
 ## Dashboard
 
-A sidebar (Today, Food & plan, Running, Goals, Work & body) with your streak and a color scheme picker at the bottom: Dusk (default), Midnight, Paper or Ember, saved per browser. Each metric keeps one color everywhere: calories, protein, water, running, and so on.
+A sidebar (Today, Food & plan, Running, Work & body) with your streak and a color scheme picker at the bottom: Dusk (default), Midnight, Paper or Ember, saved per browser. Each metric keeps one color everywhere: calories, protein, running, and so on. On phones the nav becomes a bottom tab bar, and the site can be added to the home screen as "Lifestyle".
 
-**Today** has three rings (calories, protein, water; the calorie target rises by the net burn of today's run, 0.63 cal per lb per mile) with this week's goals beside them, then today's plan and meals next to running, then a GitHub-style year of days. Click any day, a recent run, or "Open today" to see just that day. `/running` has every run, charts and bests; `/goals` has each goal with its reasoning and last week's scorecard; `/work` has content, business, reading and weight.
+**Today** has three rings: calories (the target rises by the net burn of today's run, 0.63 cal per lb per mile), protein, and today's workouts (planned run and lift sessions done; a rest day counts as full). Hover or tap a ring to highlight it. This week's goals sit beside them, then today's plan and meals next to running, then a GitHub-style year of days. Click any day or a recent run to see just that day. `/plan` shows today (or `?d=` any day) as a page; `/running` has every run, charts and bests; `/goals` has each goal with its reasoning and last week's scorecard; `/work` has content, business, reading and weight.
 
-The day dialog shows that date only: the run with its splits and how it compares to your best and previous run at that distance, lifts, the training plan, food against the day's target, the meal plan, what was logged, water, weight and check-in. Left/right arrows (or the buttons) step a day. `/#day=YYYY-MM-DD` opens a day directly; `/running?d=YYYY-MM-DD` highlights that day's run in the log.
+The day dialog shows that date only: the run with its splits and how it compares to your best and previous run at that distance, lifts, the training plan, food against the day's target, the meal plan, what was logged, weight and check-in. Left/right arrows (or the buttons) step a day. `/#day=YYYY-MM-DD` opens a day directly; `/running?d=YYYY-MM-DD` highlights that day's run in the log.
 
 ## Local dev
 
