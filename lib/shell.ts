@@ -3,10 +3,10 @@
 
 import type { Payload } from "./types";
 import { computeStats } from "./render";
-import { planWeek } from "./goals";
 import { esc, MONTHS, toMs, WEEKDAYS } from "./util";
 
-export type NavKey = "today" | "running" | "goals" | "work";
+/** Sidebar items. Goals live on Today (with /goals linked from there), so they're not in the nav. */
+export type NavKey = "today" | "plan" | "running" | "goals" | "work";
 
 /** Color schemes: id, label, swatch (background + three metric colors). Defined in globals.css. */
 export const THEMES: [string, string, string[]][] = [
@@ -24,7 +24,6 @@ export function dayLabel(iso: string): string {
 
 export function renderShell(active: NavKey, d: Payload, main: string): string {
   const { streak, best, consistency } = computeStats(d);
-  const plan = planWeek(d.run_log ?? [], d.food_log ?? [], d.today);
   const link = (key: NavKey | "", href: string, color: string, label: string, extra = "") =>
     `<a href="${href}" class="${key === active ? "on" : ""}"${key === active ? ' aria-current="page"' : ""}><i style="background:var(${color})"></i>${label}${extra ? `<em>${extra}</em>` : ""}</a>`;
   const themes = THEMES.map(([id, label, sw]) =>
@@ -35,10 +34,9 @@ export function renderShell(active: NavKey, d: Payload, main: string): string {
   <a class="brand" href="/"><b>Lifestyle OS</b><span>${esc(dayLabel(d.today))}</span></a>
   <nav class="nav" aria-label="Sections">
     <div class="nav-h">Health</div>
-    ${link("today", "/", "--accent", "Today")}
-    ${link("", `/#day=${d.today}`, "--cal", "Food &amp; plan")}
+    ${link(active === "goals" ? "goals" : "today", "/", "--accent", "Today")}
+    ${link("plan", "/plan", "--cal", "Food &amp; plan")}
     ${link("running", "/running", "--run", "Running", String(d.fitness?.total_runs ?? 0))}
-    ${link("goals", "/goals", "--pro", "Goals", `${plan.hit}/${plan.goals.length}`)}
     <div class="nav-h">Work</div>
     ${link(active === "work" ? "work" : "", "/work", "--content", "Work &amp; body")}
   </nav>

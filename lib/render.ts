@@ -247,7 +247,7 @@ export function renderDashboard(d: Payload, generated: string): string {
     return `<li class="${m.done ? "done" : ""}" style="--c:var(--cal)"><span class="ck">${m.done ? "&#10003;" : ""}</span><span class="tg">${MEAL_LABEL[m.code] ?? esc(m.code)}</span><b>${esc(name)}</b><em>${c != null ? fmtInt(c) : ""}</em></li>`;
   }).join("");
   const planCard = `<section class="card s6">
-    <h3>Today's plan <button type="button" class="link" data-day="${d.today}">Open today &rarr;</button></h3>
+    <h3>Today's plan <a class="link" href="/plan">Full day &rarr;</a></h3>
     <div class="sub-h first">Training</div>
     ${planItems ? `<ul class="list">${planItems}</ul>` : '<p class="empty">Nothing planned.</p>'}
     <div class="sub-h">Meals</div>
