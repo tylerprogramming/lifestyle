@@ -204,15 +204,20 @@ export function renderDashboard(d: Payload, generated: string): string {
   const miTxt = (mi: number) => mi.toFixed(2).replace(/\.?0+$/, "");
 
   // ---- workouts: today's planned run/lift sessions; a rest day counts as done ----
+  // A run (or lift) logged on a day that didn't plan one counts as an extra, done session.
   const sessions = (tInfo?.plan ?? []).filter((p) => p.kind !== "rest");
-  const unplanned = tRuns.length + (tInfo?.flags?.lift ? 1 : 0); // logged without a plan
-  const wTotal = sessions.length || unplanned;
-  const wDone = sessions.length ? sessions.filter((p) => p.done).length : unplanned;
+  const extraRun = tRuns.length > 0 && !sessions.some((p) => p.kind === "run");
+  const extraLift = !!tInfo?.flags?.lift && !sessions.some((p) => p.kind === "lift");
+  const extras = (extraRun ? 1 : 0) + (extraLift ? 1 : 0);
+  const wTotal = sessions.length + extras;
+  const wDone = sessions.filter((p) => p.done).length + extras;
   const rest = wTotal === 0;
   const runBit = tRuns.length === 1 ? ` (${miTxt(tRuns[0].mi)} mi, ${pace(tRuns[0].pace)}/mi)` : "";
-  const wNames = sessions.length
-    ? sessions.map((p) => `${p.done ? "&#10003; " : ""}${esc(p.focus ?? p.kind ?? "")}${p.done && p.kind === "run" ? runBit : ""}`).join(" &middot; ")
-    : rest ? "nothing planned" : `${tRuns.length ? `run${runBit}` : ""}${tRuns.length && tInfo?.flags?.lift ? " &middot; " : ""}${tInfo?.flags?.lift ? "lift" : ""}`;
+  const wNames = [
+    ...sessions.map((p) => `${p.done ? "&#10003; " : ""}${esc(p.focus ?? p.kind ?? "")}${p.done && p.kind === "run" ? runBit : ""}`),
+    ...(extraRun ? [`&#10003; run${runBit}`] : []),
+    ...(extraLift ? ["&#10003; lift"] : []),
+  ].join(" &middot; ") || "nothing planned";
   const wTitle = rest ? "Rest day" : `${wDone} of ${wTotal} workouts done`;
 
   // ---- rings ----
