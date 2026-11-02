@@ -1,5 +1,6 @@
 import postgres from "postgres";
 import { DASHBOARD_SQL } from "./query";
+import { RECIPES_SQL, type RecipeData } from "./recipes";
 import type { Payload } from "./types";
 
 // One lazily created client per function instance. prepare:false is required
@@ -25,4 +26,10 @@ function db(): postgres.Sql {
 export async function getPayload(): Promise<Payload> {
   const rows = await db().unsafe(DASHBOARD_SQL);
   return rows[0].payload as Payload;
+}
+
+/** Every recipe with its ingredients, plus planned meals linked to a recipe (yesterday to two weeks out). */
+export async function getRecipeData(): Promise<RecipeData> {
+  const rows = await db().unsafe(RECIPES_SQL);
+  return rows[0].payload as RecipeData;
 }

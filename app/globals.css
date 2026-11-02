@@ -59,6 +59,7 @@ a{color:inherit}
 .nav a.on{background:var(--panel-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
 .nav a i{width:8px;height:8px;border-radius:3px;flex:none}
 .nav a em{margin-left:auto;font-style:normal;font-size:12px;color:var(--faint)}
+.nav a .ls{display:none}
 .side-foot{margin-top:auto;padding:14px 10px 0;border-top:1px solid var(--line)}
 .streak{display:flex;align-items:baseline;gap:6px}
 .streak b{font-size:22px} .streak span{color:var(--dim);font-size:12px}
@@ -321,6 +322,48 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
 .login button:disabled{opacity:.6}
 .login .err{color:var(--bad);font-size:13px}
 
+/* ---------- recipes ---------- */
+.s5{grid-column:span 5}.s7{grid-column:span 7}
+.back{display:inline-block;margin-bottom:6px}
+.rtools{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:14px}
+.rtools .fchips{margin:0}
+.rsearch{flex:1 1 240px;max-width:360px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit;font-size:14px}
+.rsearch:focus{outline:2px solid var(--accent);outline-offset:1px}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.rcard{display:flex;flex-direction:column;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;color:var(--text);text-decoration:none;min-width:0;transition:border-color .12s}
+.rcard:hover{border-color:var(--c,var(--line-2))}
+.rcard[hidden]{display:none}
+.rcard b{font-size:14px;font-weight:600;line-height:1.3}
+.rdesc{font-size:12px;color:var(--dim);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rmeta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--dim);margin-top:auto}
+.rmeta .num:first-child{color:var(--cal)} .rmeta .num:nth-child(2){color:var(--pro)}
+.rplan{font-size:12px;color:var(--good);margin:0}
+.planlist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));column-gap:24px}
+.planlist a{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);color:var(--text);text-decoration:none;font-size:14px}
+.planlist a:hover b{color:var(--accent)}
+.planlist b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.planlist .pdays{font-size:12px;color:var(--good);text-align:right;white-space:nowrap}
+.planlist em{grid-column:1/-1;font-style:normal;font-size:12px;color:var(--dim)}
+.mtiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.mtiles .note,.mtiles .rplan{grid-column:1/-1;margin:0}
+.mtile{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.mtile span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--c)}
+.mtile b{font-size:26px;font-weight:700}
+.mtile small{font-size:14px;color:var(--dim);font-weight:500;margin-left:2px}
+.ing{list-style:none;margin:0;padding:0}
+.ing li{display:grid;grid-template-columns:fit-content(42%) minmax(0,1fr);gap:2px 12px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.ing li:first-child{border-top:0}
+.ing .amt{font-weight:600;font-variant-numeric:tabular-nums}
+.ing em{grid-column:2;font-style:normal;font-size:12px;color:var(--faint)}
+.rsteps{font-size:15px;line-height:1.55}
+.rsteps p{margin:0 0 10px}
+.steps{margin:0 0 12px;padding-left:22px}
+.steps li{margin:0 0 9px;padding-left:4px}
+.steps li::marker{color:var(--c);font-weight:700}
+.steps-h{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);margin:16px 0 8px}
+.rnotes{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.rnotes p{font-size:13px;color:var(--dim);line-height:1.5;margin:0}
+
 /* ---------- training load ---------- */
 .load{--c:var(--good)}
 .load.caution{--c:var(--warn)} .load.high{--c:var(--bad)}
@@ -343,7 +386,7 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
   .goals-c .gl{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}
 }
 @media (max-width:980px){
-  .s6{grid-column:span 12}
+  .s6,.s5,.s7{grid-column:span 12}
   .two,.glist{grid-template-columns:1fr}
 }
 @media (max-width:760px){
@@ -353,7 +396,8 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
   .brand{padding:0}
   .brand span,.nav-h,.side-foot .streak,.side-foot .side-sub{display:none}
   .nav{position:fixed;left:0;right:0;bottom:0;z-index:6;flex-direction:row;gap:0;background:var(--side);border-top:1px solid var(--line);padding:6px 6px max(6px,env(safe-area-inset-bottom))}
-  .nav a{flex:1;flex-direction:column;justify-content:center;gap:4px;min-height:52px;padding:6px 2px;font-size:11px;text-align:center;white-space:nowrap;border-radius:10px}
+  .nav a{flex:1;flex-direction:column;justify-content:center;gap:4px;min-height:52px;padding:6px 1px;font-size:10.5px;text-align:center;white-space:nowrap;border-radius:10px}
+  .nav a .lf{display:none} .nav a .ls{display:inline}
   .nav a i{width:7px;height:7px}
   .nav a em{display:none}
   .nav a.on{box-shadow:none}
@@ -371,6 +415,11 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
   .top .pill{display:none}
   .goals-c .gl{grid-template-columns:1fr}
   .kpis,.bests{grid-template-columns:repeat(2,1fr)}
+  .mtiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rsearch{max-width:none}
+  .back{display:inline-flex;align-items:center;min-height:44px;margin:-10px 0 -4px}
+  .planlist{grid-template-columns:1fr}
+  .rgrid{grid-template-columns:1fr}
   .dv-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
   .dv-stat{padding:8px 10px}
   .dv-stat b{font-size:17px}

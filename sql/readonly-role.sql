@@ -29,7 +29,9 @@ grant select on
   public.water_log,
   public.caffeine_log,
   public.training_plan,
-  public.meal_plan
+  public.meal_plan,
+  public.recipes,
+  public.recipe_ingredients
 to dashboard_ro;
 
 -- weight_log has RLS on with no policy; bypassrls lets the dashboard read it.

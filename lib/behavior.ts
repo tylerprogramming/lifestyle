@@ -2,7 +2,8 @@
 // Plain DOM, no framework: the markup comes from lib/render.ts as a string.
 //   [data-day="YYYY-MM-DD"]      opens the day dialog for that date only
 //   [data-day-step="-1|1"]       moves the open day dialog back/forward a day
-//   [data-filter="<bucket>"]     filters the run log rows by data-b (/running)
+//   [data-filter="<bucket>"]     filters the run log rows by data-b (/running) and recipe cards (/recipes)
+//   [data-search]                text search over [data-q] recipe cards (/recipes)
 //   /running?d=YYYY-MM-DD        scrolls to and highlights that day's run
 //   #day=YYYY-MM-DD in the URL   opens that day on load (shareable)
 // Day data is read from <script type="application/json" id="day-data">.
@@ -45,6 +46,27 @@ export function attachDashboard(doc: Document): () => void {
     scope.querySelectorAll<HTMLElement>("tbody tr[data-b]").forEach((tr) => {
       tr.hidden = key !== "all" && tr.dataset.b !== key;
     });
+    applyRecipeFilter(scope);
+  };
+
+  // Recipes: category chip AND search text. data-b is a space-separated bucket list.
+  const applyRecipeFilter = (scope: ParentNode) => {
+    const cards = scope.querySelectorAll<HTMLElement>(".rcard[data-b]");
+    if (!cards.length) return;
+    const key = scope.querySelector<HTMLElement>("[data-filter].on")?.dataset.filter ?? "all";
+    const q = (scope.querySelector<HTMLInputElement>("[data-search]")?.value ?? "").trim().toLowerCase();
+    let shown = 0;
+    cards.forEach((c) => {
+      const ok = (key === "all" || (c.dataset.b ?? "").split(" ").includes(key)) && (!q || (c.dataset.q ?? "").includes(q));
+      c.hidden = !ok;
+      if (ok) shown++;
+    });
+    const none = scope.querySelector<HTMLElement>(".rnone");
+    if (none) none.hidden = shown > 0;
+  };
+  const onInput = (e: Event) => {
+    const t = e.target as HTMLElement;
+    if (t.matches("[data-search]")) applyRecipeFilter(t.closest("section") ?? doc);
   };
 
   const onClick = (e: MouseEvent) => {
@@ -94,6 +116,7 @@ export function attachDashboard(doc: Document): () => void {
 
   doc.addEventListener("click", onClick);
   doc.addEventListener("keydown", onKey);
+  doc.addEventListener("input", onInput);
   doc.addEventListener("close", onClose, true); // "close" doesn't bubble; capture it
 
   const fromUrl = () => {
@@ -172,6 +195,7 @@ export function attachDashboard(doc: Document): () => void {
     doc.removeEventListener("click", onTheme);
     doc.removeEventListener("click", onClick);
     doc.removeEventListener("keydown", onKey);
+    doc.removeEventListener("input", onInput);
     doc.removeEventListener("close", onClose, true);
     window.removeEventListener("hashchange", fromUrl);
   };

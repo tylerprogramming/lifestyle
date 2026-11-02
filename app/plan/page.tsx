@@ -11,9 +11,9 @@ export default function Page({ searchParams }: PageProps<"/plan">) {
   return (
     <ShellPage
       active="plan"
-      searchParams={searchParams}
-      main={(p, _g, search) => {
-        const d = typeof search.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.d) ? search.d : p.today;
+      query={searchParams}
+      main={(p, _g, q) => {
+        const d = typeof q.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.d) ? q.d : p.today;
         return `<div class="day-page">${renderDay(d, dayData(p), true)}</div>`;
       }}
     />
