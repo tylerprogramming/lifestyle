@@ -389,25 +389,24 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
 .load{--c:var(--good)}
 .load.caution{--c:var(--warn)} .load.high{--c:var(--bad)}
 .load.caution,.load.high{border-color:color-mix(in oklab,var(--c) 45%,var(--line))}
-.load-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);background:var(--c);border-radius:6px;padding:2px 7px}
-.load-msg{margin:-2px 0 16px}
-.load-head{font-size:18px;font-weight:600;line-height:1.35;margin:0;color:var(--text)}
-.load-act{font-size:14px;color:var(--dim);margin:4px 0 0;line-height:1.45}
-.lms{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.lm{--m:var(--good);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
-.lm.caution{--m:var(--warn)} .lm.high{--m:var(--bad)} .lm.na{--m:var(--faint)}
-.lm.caution,.lm.high{border-color:color-mix(in oklab,var(--m) 40%,var(--line))}
-.lm-h{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
-.lm-flag{font-style:normal;font-size:10px;font-weight:700;color:var(--ink);background:var(--m);border-radius:4px;padding:1px 5px}
-.lm-v{display:flex;align-items:baseline;gap:5px}
-.lm-v b{font-size:26px;font-weight:700;line-height:1.1;color:var(--m)}
-.lm.ok .lm-v b,.lm.na .lm-v b{color:var(--text)}
-.lm-v small{font-size:13px;color:var(--dim)}
-.lm-bar{position:relative;height:6px;border-radius:3px;background:var(--line)}
-.lm-bar i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:var(--m)}
-.lm-bar s{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--text);opacity:.45;border-radius:1px}
-.lm-sub{font-size:12px;color:var(--dim);line-height:1.4}
-.lm-lim{font-size:11px;color:var(--faint);margin-top:auto}
+.load-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);background:var(--c);border-radius:6px;padding:3px 8px;flex:none}
+.load.ok{--c:var(--good)}
+.load-row{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap}
+.load-act{margin:0;font-size:15px;font-weight:500;line-height:1.4;flex:1 1 280px;min-width:0}
+.lchips{display:flex;gap:6px;flex-wrap:wrap}
+.lchip{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.lchip b{color:var(--warn)} .lchip.high b{color:var(--bad)}
+.load-more{margin-top:10px}
+.load-more summary{font-size:12px;color:var(--faint);cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:4px}
+.load-more summary::-webkit-details-marker{display:none}
+.load-more summary::after{content:"\25BE";font-size:10px}
+.load-more[open] summary::after{content:"\25B4"}
+.lrows{list-style:none;margin:8px 0 0;padding:0}
+.lrows li{display:grid;grid-template-columns:150px 90px minmax(0,1fr);gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+.lrows li span{color:var(--dim)}
+.lrows li b small{font-size:11px;color:var(--faint);font-weight:500}
+.lrows li em{font-style:normal;color:var(--faint);font-size:12px}
+.lrows li.caution b{color:var(--warn)} .lrows li.high b{color:var(--bad)}
 .running .load.panel h3{display:flex;align-items:center;gap:8px}
 .running .load.panel h3 .link{margin-left:auto}
 .running .load.panel .link[href="/running"]{display:none}
@@ -420,7 +419,6 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
 @media (max-width:980px){
   .s6,.s5,.s7{grid-column:span 12}
   .two,.glist{grid-template-columns:1fr}
-  .lms{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
@@ -454,9 +452,8 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
   .planlist{grid-template-columns:1fr}
   .rgrid{grid-template-columns:1fr}
   .gtools{width:100%}
-  .load-head{font-size:16px}
-  .lm{padding:10px 12px}
-  .lm-v b{font-size:22px}
+  .lrows li{grid-template-columns:minmax(0,1fr) auto;gap:2px 12px}
+  .lrows li em{grid-column:1/-1}
   .glist2 label{min-height:46px}
   .dv-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
   .dv-stat{padding:8px 10px}

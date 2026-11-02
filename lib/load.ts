@@ -142,31 +142,33 @@ export function assessLoad(runs: Run[], today: string, todayPlan: PlanItem[] = [
   const join = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const headline = reasons.length ? `${cap(join(reasons))}.` : "No warning signs in your recent running.";
-  const target = `Keep this week near ${fmtMi(weeklyAvg * 1.1)} mi`;
   let action = "";
   if (level !== "ok") {
-    if (restToday) action = `Today's rest is the right call. ${rampLevel !== "ok" ? `${target}.` : "One more easy day before anything hard."}`;
-    else if (ranToday) action = `Make tomorrow a rest day. ${rampLevel !== "ok" ? `${target}.` : ""}`.trim();
-    else action = `Swap today's run for rest or an easy 2-3 mi. ${rampLevel !== "ok" ? `${target}.` : ""}`.trim();
+    if (restToday) action = rampLevel !== "ok" ? `Rest today, and keep this week near ${fmtMi(weeklyAvg * 1.1)} mi.` : "Rest today, then one more easy day before anything hard.";
+    else if (ranToday) action = rampLevel !== "ok" ? `Rest tomorrow, and keep this week near ${fmtMi(weeklyAvg * 1.1)} mi.` : "Make tomorrow a rest day.";
+    else action = rampLevel !== "ok" ? `Swap today's run for rest or an easy 2-3 mi; keep this week near ${fmtMi(weeklyAvg * 1.1)} mi.` : "Swap today's run for rest or an easy 2-3 mi.";
   }
 
   return { level, metrics, headline, action, streak, last7, prev7, weeklyAvg, ratio, hard7: hardRuns.length };
 }
 
-/** Card for Today (only when something is flagged) and Running (always). */
+/**
+ * Card for Today (only when something is flagged) and Running (always).
+ * Simple by default: the verdict, one line of what to do, and only the
+ * signals that are flagged. "Details" opens all four with their numbers.
+ */
 export function renderLoadCard(load: Load, opts: { always?: boolean; span?: string } = {}): string {
   if (!opts.always && load.level === "ok") return "";
   const label = { ok: "Looks fine", caution: "Ease off", high: "Back off" }[load.level];
-  const tile = (m: LoadMetric) => `<div class="lm ${m.na ? "na" : m.level}">
-      <div class="lm-h"><span>${esc(m.label)}</span>${m.level !== "ok" ? `<i class="lm-flag">${m.level === "high" ? "high" : "flag"}</i>` : ""}</div>
-      <div class="lm-v"><b class="num">${esc(m.value)}</b>${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</div>
-      <div class="lm-bar" aria-hidden="true"><i style="width:${(m.fill * 100).toFixed(0)}%"></i><s style="left:${(m.mark * 100).toFixed(0)}%"></s></div>
-      <div class="lm-sub">${esc(m.sub)}</div>
-      <div class="lm-lim">${esc(m.limit)}</div>
-    </div>`;
+  const flagged = load.metrics.filter((m) => m.level !== "ok");
+  const chip = (m: LoadMetric) => `<span class="lchip ${m.level}"><b class="num">${esc(m.value)}</b> ${esc(m.key === "streak" ? "days in a row" : m.key === "ramp" ? `mi, ${load.ratio?.toFixed(1)}x usual` : m.key === "hard" ? "hard runs" : "bpm at easy pace")}</span>`;
+  const row = (m: LoadMetric) => `<li class="${m.na ? "na" : m.level}"><span>${esc(m.label)}</span><b class="num">${esc(m.value)}${m.unit ? ` <small>${esc(m.unit)}</small>` : ""}</b><em>${esc(m.sub)} &middot; ${esc(m.limit)}</em></li>`;
   return `<section class="card ${opts.span ?? "s12"} load ${load.level}" aria-label="Training load">
-    <h3><i class="dot"></i>Training load <span class="load-badge">${label}</span><a class="link" href="/running">Running &rarr;</a></h3>
-    <div class="load-msg"><p class="load-head">${esc(load.headline)}</p>${load.action ? `<p class="load-act">${esc(load.action)}</p>` : ""}</div>
-    <div class="lms">${load.metrics.map(tile).join("")}</div>
+    <div class="load-row">
+      <span class="load-badge">${label}</span>
+      <p class="load-act">${esc(load.action || load.headline)}</p>
+      ${flagged.length ? `<div class="lchips">${flagged.map(chip).join("")}</div>` : ""}
+    </div>
+    <details class="load-more"><summary>Details</summary><ul class="lrows">${load.metrics.map(row).join("")}</ul><p class="note">Rules of thumb, not medical advice. <a class="link" href="/running">Running &rarr;</a></p></details>
   </section>`;
 }
