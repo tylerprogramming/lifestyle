@@ -14,10 +14,32 @@ import type { PlanItem, Run } from "./types";
 import { addDays, esc, fmtMi, pace, toIso, toMs } from "./util";
 
 export type LoadLevel = "ok" | "caution" | "high";
-export type LoadItem = { level: LoadLevel; title: string; detail: string };
+
+/** One measured signal, always present so the card can show all four. */
+export type LoadMetric = {
+  key: "streak" | "ramp" | "hard" | "hr";
+  label: string;
+  /** Big number as shown ("10", "1.35x", "+4"). */
+  value: string;
+  unit: string;
+  /** Plain-language line under the number. */
+  sub: string;
+  /** "flag at 6" etc. */
+  limit: string;
+  level: LoadLevel;
+  /** 0..1 position on the meter; the flag line sits at `mark`. */
+  fill: number;
+  mark: number;
+  /** No data to judge (e.g. no HR on recent runs). */
+  na?: boolean;
+};
+
 export type Load = {
   level: LoadLevel;
-  items: LoadItem[];
+  metrics: LoadMetric[];
+  /** One-sentence summary and what to do about it. */
+  headline: string;
+  action: string;
   streak: number;
   last7: number;
   prev7: number;
@@ -28,6 +50,7 @@ export type Load = {
 
 const rank: Record<LoadLevel, number> = { ok: 0, caution: 1, high: 2 };
 const worst = (a: LoadLevel, b: LoadLevel): LoadLevel => (rank[a] >= rank[b] ? a : b);
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
 function median(xs: number[]): number | null {
   if (!xs.length) return null;
@@ -40,7 +63,8 @@ export function assessLoad(runs: Run[], today: string, todayPlan: PlanItem[] = [
   const t = toMs(today);
   const runDays = new Set(runs.filter((r) => r.mi > 0).map((r) => r.date));
   const ranToday = runDays.has(today);
-  const restPlanned = !ranToday && !todayPlan.some((p) => p.kind === "run");
+  const runPlanned = todayPlan.some((p) => p.kind === "run");
+  const restToday = !ranToday && !runPlanned;
 
   // consecutive run days ending today (or yesterday, if no run yet today)
   let streak = 0;
@@ -60,72 +84,89 @@ export function assessLoad(runs: Run[], today: string, todayPlan: PlanItem[] = [
   const lo7 = toIso(addDays(t, -6));
   const hardRuns = med ? runs.filter((r) => r.date >= lo7 && r.pace && r.pace <= med - 25) : [];
 
-  const items: LoadItem[] = [];
-
-  if (streak >= 6) {
-    const level: LoadLevel = streak >= 9 ? "high" : "caution";
-    items.push({
-      level,
-      title: `${streak} run days in a row`,
-      detail: restPlanned
-        ? `Through yesterday. Today has no run planned: that's the right call.`
-        : `${ranToday ? "Including today" : "Through yesterday"}. Take a full day off running in the next day or two.`,
-    });
-  }
-
-  if (ratio !== null && last7 >= 8 && ratio >= 1.3) {
-    const pct = prev7 > 0 ? Math.round((last7 / prev7 - 1) * 100) : null;
-    items.push({
-      level: ratio >= 1.5 ? "high" : "caution",
-      title: `Miles ramping up fast`,
-      detail: `${fmtMi(last7)} mi in the last 7 days vs ${fmtMi(weeklyAvg)} a week on average over 4 weeks (${ratio.toFixed(2)}x)${pct !== null ? `; ${pct >= 0 ? "+" : ""}${pct}% on the 7 days before` : ""}. Keep next week near ${fmtMi(weeklyAvg * 1.1)} mi.`,
-    });
-  }
-
-  if (hardRuns.length >= 3) {
-    items.push({
-      level: "caution",
-      title: `${hardRuns.length} hard runs in 7 days`,
-      detail: `Runs 25+ s/mi faster than your usual ${pace(med)}/mi: ${hardRuns.map((r) => `${fmtMi(r.mi)} mi at ${pace(r.pace)}`).join(", ")}. One or two a week is plenty.`,
-    });
-  }
-
+  // HR at a familiar pace: latest 2+ mi run with HR in the last 3 days vs similar-pace runs before this week.
+  let hrDiff: number | null = null;
+  let hrRun: Run | null = null;
+  let hrAvg = 0;
+  let hrN = 0;
   const last = [...runs].reverse().find((r) => r.hr && r.pace && r.mi >= 2);
   if (last && last.date >= toIso(addDays(t, -3))) {
     const lo60 = toIso(addDays(t, -60));
     const cmp = runs.filter((r) => r !== last && r.hr && r.pace && r.mi >= 2 && r.date >= lo60 && r.date < lo7 && Math.abs(r.pace - last.pace!) <= 30);
     if (cmp.length >= 3) {
-      const avg = cmp.reduce((a, r) => a + r.hr!, 0) / cmp.length;
-      const diff = last.hr! - avg;
-      if (diff >= 8) {
-        items.push({
-          level: "caution",
-          title: `Heart rate up at a familiar pace`,
-          detail: `${last.hr} bpm at ${pace(last.pace)}/mi on ${esc(last.name ?? "your last run")}; you average ${Math.round(avg)} at that pace (${cmp.length} runs). Tired legs, heat or poor sleep: go easy.`,
-        });
-      }
+      hrAvg = cmp.reduce((a, r) => a + r.hr!, 0) / cmp.length;
+      hrDiff = last.hr! - hrAvg;
+      hrRun = last;
+      hrN = cmp.length;
     }
   }
 
-  const level = items.reduce<LoadLevel>((a, i) => worst(a, i.level), "ok");
-  return { level, items, streak, last7, prev7, weeklyAvg, ratio, hard7: hardRuns.length };
+  const streakLevel: LoadLevel = streak >= 9 ? "high" : streak >= 6 ? "caution" : "ok";
+  const rampOn = ratio !== null && last7 >= 8;
+  const rampLevel: LoadLevel = rampOn && ratio! >= 1.5 ? "high" : rampOn && ratio! >= 1.3 ? "caution" : "ok";
+  const hardLevel: LoadLevel = hardRuns.length >= 3 ? "caution" : "ok";
+  const hrLevel: LoadLevel = hrDiff !== null && hrDiff >= 8 ? "caution" : "ok";
+  const pctPrev = prev7 > 0 ? Math.round((last7 / prev7 - 1) * 100) : null;
+
+  const metrics: LoadMetric[] = [
+    {
+      key: "streak", label: "Run streak", value: String(streak), unit: streak === 1 ? "day" : "days",
+      sub: streak === 0 ? "no run yesterday" : `${ranToday ? "including today" : "through yesterday"}`,
+      limit: "flag at 6", level: streakLevel, fill: clamp01(streak / 12), mark: 6 / 12,
+    },
+    {
+      key: "ramp", label: "Last 7 days", value: fmtMi(last7), unit: "mi",
+      sub: ratio !== null ? `${ratio.toFixed(2)}x your ${fmtMi(weeklyAvg)} mi/wk average` : "no 4-week history yet",
+      limit: "flag at 1.3x", level: rampLevel, fill: clamp01((ratio ?? 0) / 2), mark: 1.3 / 2,
+    },
+    {
+      key: "hard", label: "Hard runs", value: String(hardRuns.length), unit: "in 7 days",
+      sub: med ? `25+ s/mi under your usual ${pace(med)}/mi` : "not enough runs to judge",
+      limit: "flag at 3", level: hardLevel, fill: clamp01(hardRuns.length / 5), mark: 3 / 5, na: !med,
+    },
+    {
+      key: "hr", label: "Easy-pace heart rate", value: hrDiff === null ? "-" : `${hrDiff >= 0 ? "+" : ""}${Math.round(hrDiff)}`, unit: hrDiff === null ? "" : "bpm",
+      sub: hrDiff === null || !hrRun ? "needs a recent 2+ mi run with HR" : `${hrRun.hr} at ${pace(hrRun.pace)}/mi vs ${Math.round(hrAvg)} avg (${hrN} runs)`,
+      limit: "flag at +8", level: hrLevel, fill: hrDiff === null ? 0 : clamp01((hrDiff + 8) / 24), mark: 16 / 24, na: hrDiff === null,
+    },
+  ];
+
+  const level = metrics.reduce<LoadLevel>((a, m) => worst(a, m.level), "ok");
+
+  // Headline: what's flagged, in one sentence. Action: what to do today / this week.
+  const reasons: string[] = [];
+  if (streakLevel !== "ok") reasons.push(`${streak} run days in a row`);
+  if (rampLevel !== "ok") reasons.push(`miles up ${pctPrev !== null && pctPrev > 0 ? `${pctPrev}% on the week before` : `to ${ratio!.toFixed(2)}x your average`}`);
+  if (hardLevel !== "ok") reasons.push(`${hardRuns.length} hard runs this week`);
+  if (hrLevel !== "ok") reasons.push(`heart rate ${Math.round(hrDiff!)} bpm high at an easy pace`);
+  const join = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const headline = reasons.length ? `${cap(join(reasons))}.` : "No warning signs in your recent running.";
+  const target = `Keep this week near ${fmtMi(weeklyAvg * 1.1)} mi`;
+  let action = "";
+  if (level !== "ok") {
+    if (restToday) action = `Today's rest is the right call. ${rampLevel !== "ok" ? `${target}.` : "One more easy day before anything hard."}`;
+    else if (ranToday) action = `Make tomorrow a rest day. ${rampLevel !== "ok" ? `${target}.` : ""}`.trim();
+    else action = `Swap today's run for rest or an easy 2-3 mi. ${rampLevel !== "ok" ? `${target}.` : ""}`.trim();
+  }
+
+  return { level, metrics, headline, action, streak, last7, prev7, weeklyAvg, ratio, hard7: hardRuns.length };
 }
 
 /** Card for Today (only when something is flagged) and Running (always). */
 export function renderLoadCard(load: Load, opts: { always?: boolean; span?: string } = {}): string {
   if (!opts.always && load.level === "ok") return "";
   const label = { ok: "Looks fine", caution: "Ease off", high: "Back off" }[load.level];
-  const stats = `<div class="load-stats">
-    <span><b class="num">${load.streak}</b> day streak</span>
-    <span><b class="num">${fmtMi(load.last7)}</b> mi last 7 days</span>
-    <span><b class="num">${fmtMi(load.weeklyAvg)}</b> mi/wk 4-wk avg</span>
-    <span><b class="num">${load.hard7}</b> hard runs</span>
-  </div>`;
-  const list = load.items.length
-    ? `<ul class="load-list">${load.items.map((i) => `<li class="${i.level}"><b>${esc(i.title)}</b><span>${i.detail}</span></li>`).join("")}</ul>`
-    : `<p class="note">No streak, ramp, hard-run or heart-rate flags.</p>`;
+  const tile = (m: LoadMetric) => `<div class="lm ${m.na ? "na" : m.level}">
+      <div class="lm-h"><span>${esc(m.label)}</span>${m.level !== "ok" ? `<i class="lm-flag">${m.level === "high" ? "high" : "flag"}</i>` : ""}</div>
+      <div class="lm-v"><b class="num">${esc(m.value)}</b>${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</div>
+      <div class="lm-bar" aria-hidden="true"><i style="width:${(m.fill * 100).toFixed(0)}%"></i><s style="left:${(m.mark * 100).toFixed(0)}%"></s></div>
+      <div class="lm-sub">${esc(m.sub)}</div>
+      <div class="lm-lim">${esc(m.limit)}</div>
+    </div>`;
   return `<section class="card ${opts.span ?? "s12"} load ${load.level}" aria-label="Training load">
     <h3><i class="dot"></i>Training load <span class="load-badge">${label}</span><a class="link" href="/running">Running &rarr;</a></h3>
-    ${list}${stats}
+    <div class="load-msg"><p class="load-head">${esc(load.headline)}</p>${load.action ? `<p class="load-act">${esc(load.action)}</p>` : ""}</div>
+    <div class="lms">${load.metrics.map(tile).join("")}</div>
   </section>`;
 }
