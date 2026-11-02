@@ -11,6 +11,7 @@
 // Returns a cleanup function.
 
 import { renderDay, type DayData } from "./day-view";
+import { scaleText } from "./scale";
 import { addDays, toIso, toMs } from "./util";
 
 export function attachDashboard(doc: Document): () => void {
@@ -58,7 +59,8 @@ export function attachDashboard(doc: Document): () => void {
     const q = (scope.querySelector<HTMLInputElement>("[data-search]")?.value ?? "").trim().toLowerCase();
     let shown = 0;
     cards.forEach((c) => {
-      const ok = (key === "all" || (c.dataset.b ?? "").split(" ").includes(key)) && (!q || (c.dataset.q ?? "").includes(q));
+      // A search looks through every recipe, whatever chip is selected.
+      const ok = (q ? true : key === "all" || (c.dataset.b ?? "").split(" ").includes(key)) && (!q || (c.dataset.q ?? "").includes(q));
       c.hidden = !ok;
       if (ok) shown++;
     });
@@ -68,6 +70,66 @@ export function attachDashboard(doc: Document): () => void {
   const onInput = (e: Event) => {
     const t = e.target as HTMLElement;
     if (t.matches("[data-search]")) applyRecipeFilter(t.closest("section") ?? doc);
+  };
+  doc.querySelectorAll<HTMLElement>(".recipes").forEach((s) => applyRecipeFilter(s));
+
+  // Recipe page: servings stepper rescales ingredient amounts; ingredients
+  // and steps check off on tap (saved per recipe in sessionStorage);
+  // "Keep screen on" holds a wake lock while cooking.
+  const recipe = doc.querySelector<HTMLElement>("[data-recipe]");
+  const rKey = recipe ? `ls-cook:${recipe.dataset.recipe}` : null;
+  const base = Number(recipe?.dataset.serv ?? 1) || 1;
+  let servings = base;
+  const setServings = (n: number) => {
+    if (!recipe) return;
+    servings = Math.max(1, Math.min(base * 6, n));
+    const f = servings / base;
+    recipe.querySelectorAll<HTMLElement>("[data-amt]").forEach((el) => (el.textContent = scaleText(el.dataset.amt ?? "", f)));
+    const out = recipe.querySelector("[data-scale-n]");
+    if (out) out.textContent = String(servings);
+    const u = recipe.querySelector<HTMLElement>("[data-unit]");
+    if (u) u.textContent = servings === 1 ? u.dataset.unit! : u.dataset.units!;
+    recipe.classList.toggle("scaled", f !== 1);
+  };
+  const checks = (): Set<string> => {
+    try {
+      return new Set(rKey ? (JSON.parse(sessionStorage.getItem(rKey) ?? "[]") as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  };
+  const paint = (done: Set<string>) =>
+    recipe?.querySelectorAll<HTMLElement>("[data-check]").forEach((el) => {
+      const on = done.has(el.dataset.check!);
+      el.classList.toggle("done", on);
+      if (el instanceof HTMLInputElement) el.checked = on;
+      el.closest("li")?.classList.toggle("done", on);
+    });
+  const toggleCheck = (id: string) => {
+    if (!rKey) return;
+    const done = checks();
+    if (done.has(id)) done.delete(id);
+    else done.add(id);
+    try {
+      sessionStorage.setItem(rKey, JSON.stringify([...done]));
+    } catch {
+      /* private mode */
+    }
+    paint(done);
+  };
+  if (recipe) paint(checks());
+  let wake: { release: () => Promise<void> } | null = null;
+  const setWake = async (on: boolean) => {
+    const nav = navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } };
+    try {
+      if (on && nav.wakeLock) wake = await nav.wakeLock.request("screen");
+      else if (!on && wake) {
+        await wake.release();
+        wake = null;
+      }
+    } catch {
+      /* not supported or denied */
+    }
   };
 
   // Grocery checkboxes: saved per list (week) in localStorage.
@@ -95,6 +157,14 @@ export function attachDashboard(doc: Document): () => void {
   }
   const onChange = (e: Event) => {
     const t = e.target as HTMLInputElement;
+    if (t.matches("[data-wake]")) {
+      void setWake(t.checked);
+      return;
+    }
+    if (recipe && t.matches("input[data-check]")) {
+      toggleCheck(t.dataset.check!);
+      return;
+    }
     if (!gList || !gKey || !t.matches("[data-grocery]")) return;
     const got = [...gList.querySelectorAll<HTMLInputElement>("[data-grocery]")].filter((b) => b.checked).map((b) => b.dataset.grocery!);
     try {
@@ -138,6 +208,16 @@ export function attachDashboard(doc: Document): () => void {
       gClear();
       return;
     }
+    const sc = t.closest<HTMLElement>("[data-scale]");
+    if (sc) {
+      setServings(servings + Number(sc.dataset.scale));
+      return;
+    }
+    const stepLi = t.closest<HTMLElement>("li[data-check]");
+    if (stepLi && recipe) {
+      toggleCheck(stepLi.dataset.check!);
+      return;
+    }
     const d = t.closest<HTMLElement>("[data-day]");
     if (d && !t.closest("a")) openDay(d.dataset.day!);
   };
@@ -149,6 +229,12 @@ export function attachDashboard(doc: Document): () => void {
       return;
     }
     if (e.key !== "Enter" && e.key !== " ") return;
+    const st = (e.target as HTMLElement).closest<HTMLElement>("li[data-check]");
+    if (st && recipe) {
+      e.preventDefault();
+      toggleCheck(st.dataset.check!);
+      return;
+    }
     const d = (e.target as HTMLElement).closest<HTMLElement>("[data-day]");
     if (d && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLAnchorElement)) {
       e.preventDefault();
@@ -250,5 +336,6 @@ export function attachDashboard(doc: Document): () => void {
     doc.removeEventListener("change", onChange);
     doc.removeEventListener("close", onClose, true);
     window.removeEventListener("hashchange", fromUrl);
+    void setWake(false);
   };
 }

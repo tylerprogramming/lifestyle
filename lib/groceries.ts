@@ -6,7 +6,10 @@
 // ingredient and unit; anything else ("to taste") lands in "check you have".
 
 import { MEAL_LABEL, type PlannedMeal, type Recipe, type RecipeData } from "./recipes";
+import { niceNum } from "./scale";
 import { MONTHS, WEEKDAYS, addDays, esc, toIso, toMs } from "./util";
+
+export { niceNum } from "./scale";
 
 type Unit = "tsp" | "oz" | "g" | string; // volume in tsp, weight in oz, else a count unit
 type Qty = { q: number; unit: Unit };
@@ -105,20 +108,6 @@ export function parseAmount(raw: string | null): Qty | null {
   const word = m[3] ?? "";
   for (const [re, unit, mult] of UNIT_ALIASES) if (re.test(word)) return { q: q * mult, unit };
   return word ? { q, unit: word.toLowerCase() } : { q, unit: "" };
-}
-
-const NICE: [number, string][] = [[0, ""], [0.125, "⅛"], [0.25, "¼"], [1 / 3, "⅓"], [0.5, "½"], [2 / 3, "⅔"], [0.75, "¾"], [1, ""]];
-
-/** 2.5 -> "2½", rounded to the nearest common fraction. */
-export function niceNum(x: number): string {
-  if (x >= 10) return String(Math.round(x));
-  let whole = Math.floor(x);
-  const rest = x - whole;
-  let best = NICE[0];
-  for (const n of NICE) if (Math.abs(n[0] - rest) < Math.abs(best[0] - rest)) best = n;
-  if (best[0] === 1) whole += 1;
-  const s = `${whole || ""}${best[1]}`;
-  return s || (x > 0 ? "⅛" : "0");
 }
 
 function plural(unit: string, q: number): string {

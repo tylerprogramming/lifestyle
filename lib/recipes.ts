@@ -1,6 +1,7 @@
 // Recipes: types, the query, and the page renderers (list + one recipe).
 // Pure view layer apart from the SQL string; data comes from getRecipeData().
 
+import { scaleText } from "./scale";
 import { MONTHS, WEEKDAYS, esc, fmtInt, toMs } from "./util";
 
 export type Ingredient = { name: string; amount: string | null; cal: number | null; p: number | null };
@@ -55,9 +56,9 @@ const CAT_ORDER = ["breakfast", "lunch", "dinner", "snack", "side"];
 
 export const isCreami = (r: Recipe) => /creami/i.test(r.name);
 
-/** Filter buckets for a recipe card: its category, plus "creami" for CREAMi pints. */
-function buckets(r: Recipe): string {
-  return [r.cat ?? "other", isCreami(r) ? "creami" : ""].filter(Boolean).join(" ");
+/** Filter buckets for a recipe card: its category, "creami" for CREAMi pints, "plan" when it's coming up on the meal plan. */
+function buckets(r: Recipe, onPlan = false): string {
+  return [r.cat ?? "other", isCreami(r) ? "creami" : "", onPlan ? "plan" : ""].filter(Boolean).join(" ");
 }
 
 const n1 = (v: number | null | undefined) => (v == null ? "-" : String(Math.round(Number(v) * 10) / 10).replace(/\.0$/, ""));
@@ -79,54 +80,53 @@ function upcoming(r: Recipe, planned: PlannedMeal[], today: string): PlannedMeal
 
 // ---------- list ----------
 
+/** Category badge color per recipe. */
+const CAT_COLOR: Record<string, string> = { breakfast: "--read", lunch: "--cal", dinner: "--run", snack: "--pro", side: "--lift" };
+const catLabel = (r: Recipe) => (isCreami(r) ? "CREAMi" : (r.cat ?? "other").replace(/^./, (c) => c.toUpperCase()));
+
 function card(r: Recipe, planned: PlannedMeal[], today: string): string {
   const next = upcoming(r, planned, today);
   const mins = totalMin(r);
-  return `<a class="rcard" href="/recipes/${r.id}" data-b="${buckets(r)}" data-q="${esc(`${r.name} ${r.desc ?? ""} ${r.ing.map((i) => i.name).join(" ")}`.toLowerCase())}">
-    <b>${esc(r.name)}</b>
-    ${r.desc ? `<span class="rdesc">${esc(r.desc)}</span>` : ""}
-    <span class="rmeta"><span class="num">${fmtInt(r.cal)} cal</span><span class="num">${n1(r.p)} g protein</span>${mins ? `<span>${mins} min</span>` : ""}${(r.serv ?? 1) > 1 ? `<span>makes ${r.serv}</span>` : ""}</span>
-    ${next.length ? `<span class="rplan">On the plan: ${next.slice(0, 4).map((m) => esc(shortDay(m.date).slice(0, 3))).join(", ")}${next.length > 4 ? ` +${next.length - 4}` : ""}</span>` : ""}
+  const nextDay = next[0] ? (next[0].date === today ? "Today" : shortDay(next[0].date).slice(0, 3)) : "";
+  return `<a class="rcard" href="/recipes/${r.id}" style="--c:var(${CAT_COLOR[r.cat ?? ""] ?? "--pro"})" data-b="${buckets(r, next.length > 0)}" data-q="${esc(`${r.name} ${r.desc ?? ""} ${r.ing.map((i) => i.name).join(" ")}`.toLowerCase())}">
+    <span class="rtop"><span class="rcat">${esc(catLabel(r))}</span>${nextDay ? `<span class="rnext">Next: ${esc(nextDay)}</span>` : ""}</span>
+    <b>${esc(cleanName(r.name))}</b>
+    <span class="rmacros"><span class="rcal num">${fmtInt(r.cal)}<small>cal</small></span><span class="rpro num">${n1(r.p)}<small>g protein</small></span></span>
+    <span class="rmeta">${mins ? `${mins} min` : ""}${mins && (r.serv ?? 1) > 1 ? " &middot; " : ""}${(r.serv ?? 1) > 1 ? `makes ${r.serv}` : ""}</span>
   </a>`;
+}
+
+/** Drop bracketed prep notes from a display name: "Chicken Burrito Bowls (Chipotle-style, batch of 3)" -> "Chicken Burrito Bowls". */
+export function cleanName(name: string): string {
+  return name.replace(/\s*\((?!.*Dole).*\)\s*$/, "").replace(/\s*\(batch\)$/i, "");
 }
 
 export function renderRecipes(data: RecipeData): string {
   const { recipes, planned, today } = data;
   const counts: Record<string, number> = {};
-  for (const r of recipes) for (const b of buckets(r).split(" ")) counts[b] = (counts[b] ?? 0) + 1;
-  const chip = (key: string, label: string) =>
-    counts[key] || key === "all" ? `<button type="button" class="fchip${key === "all" ? " on" : ""}" data-filter="${key}" aria-pressed="${key === "all"}">${label}<span>${key === "all" ? recipes.length : counts[key]}</span></button>` : "";
+  for (const r of recipes) for (const b of buckets(r, upcoming(r, planned, today).length > 0).split(" ")) counts[b] = (counts[b] ?? 0) + 1;
+  const tab = (key: string, label: string, on = false) =>
+    counts[key] || key === "all" ? `<button type="button" class="fchip${on ? " on" : ""}" data-filter="${key}" aria-pressed="${on}">${label}<span>${key === "all" ? recipes.length : counts[key]}</span></button>` : "";
+  const startOnPlan = (counts.plan ?? 0) > 0;
 
-  // On the plan: one compact row per recipe, soonest first.
-  const soon = recipes
-    .map((r) => ({ r, next: upcoming(r, planned, today) }))
-    .filter((x) => x.next.length)
-    .sort((a, b) => a.next[0].date.localeCompare(b.next[0].date) || a.r.name.localeCompare(b.r.name));
-  const days = (ms: PlannedMeal[]) => [...new Set(ms.map((m) => shortDay(m.date).slice(0, 3)))];
-  const shortName = (r: Recipe) => r.name.replace(/\s*\(.*$/, "");
-  const dupes = new Set(soon.map((x) => shortName(x.r)).filter((n, i, a) => a.indexOf(n) !== i));
-  const planRows = soon.map(({ r, next }) => {
-    const ds = days(next);
-    return `<li><a href="/recipes/${r.id}"><b>${esc(dupes.has(shortName(r)) ? r.name : shortName(r))}</b><span class="pdays">${ds.slice(0, 5).join(", ")}${ds.length > 5 ? ` +${ds.length - 5}` : ""}</span><em class="num">${fmtInt(r.cal)} cal &middot; ${n1(r.p)} g</em></a></li>`;
-  }).join("");
+  // Soonest-planned first, then by category and name.
+  const nextOf = (r: Recipe) => upcoming(r, planned, today)[0]?.date ?? "9999";
   const sorted = [...recipes].sort((a, b) => {
+    const pa = nextOf(a), pb = nextOf(b);
+    if (pa !== pb) return pa.localeCompare(pb);
     const ca = CAT_ORDER.indexOf(a.cat ?? ""), cb = CAT_ORDER.indexOf(b.cat ?? "");
     return (ca < 0 ? 99 : ca) - (cb < 0 ? 99 : cb) || a.name.localeCompare(b.name);
   });
 
-  return `<header class="top"><div><h1>Recipes</h1><p class="sub">${recipes.length} recipes &middot; per-serving calories and protein &middot; tap one for the steps</p></div><a class="pill" href="/groceries">Grocery list &rarr;</a></header>
-<div class="grid">
-  ${planRows ? `<section class="card s12" style="--c:var(--cal)"><h3>On the plan <span class="dim">next two weeks</span></h3><ul class="planlist">${planRows}</ul></section>` : ""}
-  <section class="card s12" style="--c:var(--pro)">
-    <h3>All recipes</h3>
-    <div class="rtools">
-      <input type="search" class="rsearch" data-search placeholder="Search recipes or ingredients" aria-label="Search recipes">
-      <div class="fchips" role="group" aria-label="Filter recipes">${chip("all", "All")}${chip("breakfast", "Breakfast")}${chip("lunch", "Lunch")}${chip("dinner", "Dinner")}${chip("snack", "Snacks")}${chip("creami", "CREAMi")}${chip("side", "Sides")}</div>
-    </div>
-    <div class="rgrid">${sorted.map((r) => card(r, planned, today)).join("")}</div>
-    <p class="empty rnone" hidden>No recipes match.</p>
-  </section>
-</div>`;
+  return `<header class="top"><div><h1>Recipes</h1><p class="sub">${recipes.length} saved &middot; calories and protein per serving</p></div><a class="pill" href="/groceries">Grocery list &rarr;</a></header>
+<section class="recipes" data-filter-scope>
+  <div class="rtools">
+    <input type="search" class="rsearch" data-search placeholder="Search: chicken, CREAMi, gochujang..." aria-label="Search recipes">
+    <div class="fchips" role="group" aria-label="Filter recipes">${tab("plan", "This week", startOnPlan)}${tab("all", "All", !startOnPlan)}${tab("breakfast", "Breakfast")}${tab("lunch", "Lunch")}${tab("dinner", "Dinner")}${tab("snack", "Snacks")}${tab("creami", "CREAMi")}</div>
+  </div>
+  <div class="rgrid">${sorted.map((r) => card(r, planned, today)).join("")}</div>
+  <p class="empty rnone" hidden>No recipes match.</p>
+</section>`;
 }
 
 // ---------- one recipe ----------
@@ -146,14 +146,14 @@ export function formatSteps(text: string): string {
   let ol: string[] = [];
   let start = 1;
   const flush = () => {
-    if (ol.length) out.push(`<ol class="steps" start="${start}">${ol.join("")}</ol>`);
+    if (ol.length) out.push(`<ol class="steps" start="${start}" style="--start:${start}">${ol.join("")}</ol>`);
     ol = [];
   };
   for (const l of lines) {
     const m = l.match(/^(\d{1,2})\.\s*(.*)$/);
     if (m) {
       if (!ol.length) start = Number(m[1]);
-      ol.push(`<li>${esc(m[2])}</li>`);
+      ol.push(`<li data-check="s${m[1]}" tabindex="0">${esc(m[2])}</li>`);
     } else if (/^[A-Z][A-Z0-9 &'/-]{2,}$/.test(l)) {
       flush();
       out.push(`<h4 class="steps-h">${esc(l.charAt(0) + l.slice(1).toLowerCase())}</h4>`);
@@ -168,29 +168,35 @@ export function formatSteps(text: string): string {
 
 export function renderRecipe(r: Recipe, data: RecipeData): string {
   const next = upcoming(r, data.planned, data.today);
-  const serv = r.serv ?? 1;
-  const tile = (label: string, v: string, unit: string, c: string) =>
-    `<div class="mtile" style="--c:var(${c})"><span>${label}</span><b class="num">${v}<small>${unit}</small></b></div>`;
-  const ing = r.ing.map((i) =>
-    `<li><span class="amt">${esc(i.amount ?? "")}</span><span class="inm">${esc(i.name)}</span>${i.cal != null ? `<em class="num">${fmtInt(i.cal)} cal${i.p ? ` &middot; ${n1(i.p)} g` : ""}</em>` : ""}</li>`).join("");
+  const serv = Math.max(1, r.serv ?? 1);
   const mins = totalMin(r);
-  const meta = [
-    serv > 1 ? `Makes ${serv}${r.label ? ` (${esc(r.label)} each)` : ""}` : r.label ? esc(r.label) : "",
-    r.prep ? `${r.prep} min prep` : "",
-    r.cook ? `${r.cook} min cook` : "",
-    mins && r.prep && r.cook ? `${mins} min total` : "",
-  ].filter(Boolean).join(" &middot; ");
+  const nextTxt = next.length ? next.slice(0, 3).map((m) => `${m.date === data.today ? "Today" : shortDay(m.date).slice(0, 3)} ${(MEAL_LABEL[m.code] ?? m.code).toLowerCase()}`).join(", ") + (next.length > 3 ? ` +${next.length - 3}` : "") : "";
+  const facts = [mins ? `${mins} min` : "", serv > 1 ? `makes ${serv}` : r.label ? esc(r.label) : ""].filter(Boolean).join(`<i class="sep"></i>`);
+  // Ingredients: tap to check off; amounts rescale with the servings stepper (data-amt holds the original).
+  const ing = r.ing.map((i, k) =>
+    `<li><label><input type="checkbox" data-check="i${k}"><span class="amt" data-amt="${esc(i.amount ?? "")}">${esc(scaleText(i.amount ?? "", 1))}</span><span class="inm">${esc(i.name)}</span></label></li>`).join("");
+  // "1 bowl (1 cup rice + ...)" -> "bowl"; plural follows the stepper.
+  const unit = serv > 1 ? (r.label ?? "").replace(/^1\s+/, "").replace(/\s*\(.*$/, "").trim() || "serving" : "serving";
+  const plural = (u: string) => (/s$/.test(u) ? u : `${u}s`);
+  const scaler = `<div class="scaler" role="group" aria-label="Servings"><button type="button" class="x" data-scale="-1" aria-label="Fewer">&minus;</button><span><b class="num" data-scale-n>${serv}</b> <span data-unit="${esc(unit)}" data-units="${esc(plural(unit))}">${esc(serv === 1 ? unit : plural(unit))}</span></span><button type="button" class="x" data-scale="1" aria-label="More">+</button></div>`;
 
-  return `<header class="top"><div><a class="link back" href="/recipes">&larr; Recipes</a><h1>${esc(r.name)}</h1>${r.desc ? `<p class="sub">${esc(r.desc)}</p>` : ""}</div></header>
-<div class="grid recipe">
-  <section class="card s12 mtiles">
-    ${tile("Calories", fmtInt(r.cal), "", "--cal")}${tile("Protein", n1(r.p), "g", "--pro")}${tile("Carbs", n1(r.c), "g", "--run")}${tile("Fat", n1(r.f), "g", "--lift")}
-    <p class="note">Per serving${meta ? ` &middot; ${meta}` : ""}</p>
-    ${next.length ? `<p class="rplan">On the plan: ${next.map((m) => `${esc(shortDay(m.date))} ${MEAL_LABEL[m.code] ?? esc(m.code)}`).join(" &middot; ")}</p>` : ""}
-  </section>
-  <section class="card s5" style="--c:var(--cal)"><h3>Ingredients ${serv > 1 ? `<span class="dim">whole batch, makes ${serv}</span>` : ""}</h3><ul class="ing">${ing || '<li class="empty">No ingredients saved.</li>'}</ul></section>
-  <section class="card s7" style="--c:var(--pro)"><h3>Steps</h3><div class="rsteps">${r.steps ? formatSteps(r.steps) : '<p class="empty">No steps saved.</p>'}</div>
-    ${r.notes ? `<div class="rnotes"><div class="sub-h first">Notes</div><p>${esc(r.notes)}</p></div>` : ""}
-  </section>
+  return `<header class="top"><div><a class="link back" href="/recipes">&larr; Recipes</a><h1>${esc(cleanName(r.name))}</h1>${facts ? `<p class="rfacts">${facts}</p>` : ""}${nextTxt ? `<p class="rnext-line">Next: ${esc(nextTxt)}</p>` : ""}</div></header>
+<div class="recipe" data-recipe="${r.id}" data-serv="${serv}">
+  <div class="rhero">
+    <div class="rbig"><b class="num">${fmtInt(r.cal)}</b><span>calories</span></div>
+    <div class="rbig pro"><b class="num">${n1(r.p)}<small>g</small></b><span>protein</span></div>
+    <div class="rsmall"><span>${n1(r.c)} g carbs</span><span>${n1(r.f)} g fat</span><em>per ${serv > 1 ? "serving" : esc(r.label ?? "serving")}</em></div>
+  </div>
+  <div class="rcols">
+    <section class="card rcol-ing" style="--c:var(--cal)">
+      <h3>Ingredients ${scaler}</h3>
+      <ul class="ing">${ing || '<li class="empty">No ingredients saved.</li>'}</ul>
+    </section>
+    <section class="card rcol-steps" style="--c:var(--pro)">
+      <h3>Steps <label class="awake"><input type="checkbox" data-wake> Keep screen on</label></h3>
+      <div class="rsteps">${r.steps ? formatSteps(r.steps) : '<p class="empty">No steps saved.</p>'}</div>
+      ${r.notes ? `<details class="rnotes"><summary>Tips and notes</summary><p>${esc(r.notes)}</p></details>` : ""}
+    </section>
+  </div>
 </div>`;
 }
