@@ -3,6 +3,7 @@
 // the live rows, nothing is hardcoded.
 
 import type { Run } from "./types";
+import { assessLoad, renderLoadCard } from "./load";
 import { addDays, bucketOf, daysBetween, dur, esc, fmtMi, md, mondayOf, MONTHS, pace, toMs, type Bucket } from "./util";
 
 export { bucketOf } from "./util";
@@ -281,6 +282,7 @@ export function renderRunning(runs: Run[], todayIso: string): { body: string; we
     <div><b>${fmtMi(sum(mtd.map((r) => r.mi)))}</b><span>mi this month &middot; ${mtd.length} runs</span></div>
   </div>
   ${ins ? `<ul class="insights">${ins}</ul>` : ""}
+  ${renderLoadCard(assessLoad(runs, todayIso), { always: true, span: "panel" })}
   <section class="panel"><h3>Bests</h3><div class="bests">${s.bests.map(bestTile).join("")}</div></section>
   <section class="panel"><h3>Every run <span class="h3s">pace, faster is higher &middot; dot size = distance &middot; line = 5-run average</span></h3>${paceChart(runs)}</section>
   <div class="two">

@@ -12,6 +12,7 @@ import { analyzeRuns } from "./fitness";
 import { calTarget, type DayData } from "./day-view";
 import { planWeek } from "./goals";
 import { renderGoalsCompact } from "./goals-view";
+import { assessLoad, renderLoadCard } from "./load";
 import { PROTEIN_TARGET, WEIGHT_GOAL } from "./targets";
 import { addDays, bd, daysBetween, dur, esc, fmtInt, md, pace, sundayOf, toIso, toMs, MONTHS, WEEKDAYS } from "./util";
 
@@ -289,8 +290,10 @@ export function renderDashboard(d: Payload, generated: string): string {
   </section>`;
 
   const sub = `${stats.streak ? `${stats.streak}-day streak` : "Streak at 0"} &middot; ${plan.hit} of ${plan.goals.length} weekly goals hit`;
+  const loadCard = renderLoadCard(assessLoad(runs, d.today, tInfo?.plan ?? []));
   return `<header class="top"><div><h1>${esc(dayTitle(d.today))}</h1><p class="sub">${sub}</p></div><span class="pill">updated ${esc(generated)}</span></header>
 <div class="grid">
+${loadCard}
 ${hero}
 ${renderGoalsCompact(plan, "s4")}
 ${planCard}

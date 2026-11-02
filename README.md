@@ -21,6 +21,7 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 | `lib/render.ts` | Today and Work page HTML. |
 | `lib/shell.ts` | Sidebar shell and the color scheme list. |
 | `lib/day-view.ts` | The day dialog: everything logged or planned on one date. |
+| `lib/load.ts` | Training load check: run-day streak, weekly miles vs the 4-week average, hard runs, heart rate at a familiar pace. |
 | `lib/fitness.ts` | Run analysis (bests, weekly miles, comeback, cadence vs pace, 30-day form) and the Running page. |
 | `lib/goals.ts`, `lib/goals-view.ts` | Weekly goals, computed from data logged before each Monday. |
 | `lib/targets.ts` | Daily targets (calories, protein, weight) and the run-burn rate. Change them here. |
@@ -44,6 +45,9 @@ Logging still happens through the `/lifestyle` Claude Code skill. This app only 
 A sidebar (Today, Food & plan, Running, Work & body) with your streak and a color scheme picker at the bottom: Dusk (default), Midnight, Paper or Ember, saved per browser. Each metric keeps one color everywhere: calories, protein, running, and so on. On phones the nav becomes a bottom tab bar, and the site can be added to the home screen as "Lifestyle".
 
 **Today** has three rings: calories (the target rises by the net burn of today's run, 0.63 cal per lb per mile), protein, and today's workouts (planned run and lift sessions done; a rest day counts as full). Hover or tap a ring to highlight it. This week's goals sit beside them, then today's plan and meals next to running, then a GitHub-style year of days. Click any day or a recent run to see just that day. `/plan` shows today (or `?d=` any day) as a page; `/running` has every run, charts and bests; `/goals` has each goal with its reasoning and last week's scorecard; `/work` has content, business, reading and weight.
+
+**Training load.** When something is off, a card at the top of Today says what and why; `/running` always shows it. It flags 6+ run days in a row (9+ is high), the last 7 days' miles at 1.3x or more of the 4-week weekly average (1.5x is high), 3+ runs in a week 25 s/mi or more faster than your 90-day median pace, and heart rate 8+ bpm above your average at a similar pace. These are rules of thumb, not medical advice; the thresholds are at the top of `lib/load.ts`.
+
 
 The day dialog shows that date only: the run with its splits and how it compares to your best and previous run at that distance, lifts, the training plan, food against the day's target, the meal plan, what was logged, weight and check-in. Left/right arrows (or the buttons) step a day. `/#day=YYYY-MM-DD` opens a day directly; `/running?d=YYYY-MM-DD` highlights that day's run in the log.
 

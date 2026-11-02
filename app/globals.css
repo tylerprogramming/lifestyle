@@ -321,6 +321,22 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
 .login button:disabled{opacity:.6}
 .login .err{color:var(--bad);font-size:13px}
 
+/* ---------- training load ---------- */
+.load{--c:var(--good)}
+.load.caution{--c:var(--warn)} .load.high{--c:var(--bad)}
+.load.caution,.load.high{border-color:color-mix(in oklab,var(--c) 45%,var(--line))}
+.load-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);background:var(--c);border-radius:6px;padding:2px 7px}
+.load-list{list-style:none;margin:0 0 12px;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.load-list li{background:var(--bg);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.45}
+.load-list li.high{border-left-color:var(--bad)}
+.load-list b{display:block;margin-bottom:2px}
+.load-list span{color:var(--dim)}
+.load-stats{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--dim)}
+.load-stats b{color:var(--text);font-size:14px}
+.running .load.panel h3{display:flex;align-items:center;gap:8px}
+.running .load.panel h3 .link{margin-left:auto}
+.running .load.panel .link[href="/running"]{display:none}
+
 /* ---------- responsive ---------- */
 @media (max-width:1180px){
   .s8,.s4{grid-column:span 12}
