@@ -4,6 +4,7 @@
 //   [data-day-step="-1|1"]       moves the open day dialog back/forward a day
 //   [data-filter="<bucket>"]     filters the run log rows by data-b (/running) and recipe cards (/recipes)
 //   [data-search]                text search over [data-q] recipe cards (/recipes)
+//   [data-grocery]               grocery checkboxes, saved per list in localStorage (/groceries)
 //   /running?d=YYYY-MM-DD        scrolls to and highlights that day's run
 //   #day=YYYY-MM-DD in the URL   opens that day on load (shareable)
 // Day data is read from <script type="application/json" id="day-data">.
@@ -69,6 +70,51 @@ export function attachDashboard(doc: Document): () => void {
     if (t.matches("[data-search]")) applyRecipeFilter(t.closest("section") ?? doc);
   };
 
+  // Grocery checkboxes: saved per list (week) in localStorage.
+  const gList = doc.querySelector<HTMLElement>("[data-grocery-list]");
+  const gKey = gList ? `ls-groceries:${gList.dataset.groceryList}` : null;
+  const gLoad = (): string[] => {
+    try {
+      return gKey ? (JSON.parse(localStorage.getItem(gKey) ?? "[]") as string[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  const gSync = () => {
+    if (!gList) return;
+    const boxes = gList.querySelectorAll<HTMLInputElement>("[data-grocery]");
+    const left = [...boxes].filter((b) => !b.checked && !b.closest(".pantry")).length;
+    const el = gList.querySelector("[data-grocery-left]");
+    if (el) el.textContent = String(left);
+    boxes.forEach((b) => b.closest("li")?.classList.toggle("got", b.checked));
+  };
+  if (gList) {
+    const saved = new Set(gLoad());
+    gList.querySelectorAll<HTMLInputElement>("[data-grocery]").forEach((b) => (b.checked = saved.has(b.dataset.grocery!)));
+    gSync();
+  }
+  const onChange = (e: Event) => {
+    const t = e.target as HTMLInputElement;
+    if (!gList || !gKey || !t.matches("[data-grocery]")) return;
+    const got = [...gList.querySelectorAll<HTMLInputElement>("[data-grocery]")].filter((b) => b.checked).map((b) => b.dataset.grocery!);
+    try {
+      localStorage.setItem(gKey, JSON.stringify(got));
+    } catch {
+      /* private mode */
+    }
+    gSync();
+  };
+  const gClear = () => {
+    if (!gList || !gKey) return;
+    gList.querySelectorAll<HTMLInputElement>("[data-grocery]").forEach((b) => (b.checked = false));
+    try {
+      localStorage.removeItem(gKey);
+    } catch {
+      /* private mode */
+    }
+    gSync();
+  };
+
   const onClick = (e: MouseEvent) => {
     const t = e.target as HTMLElement;
     // backdrop click: the event target is the <dialog> itself
@@ -86,6 +132,10 @@ export function attachDashboard(doc: Document): () => void {
     const f = t.closest<HTMLElement>("[data-filter]");
     if (f) {
       setFilter(f.closest("section") ?? doc, f.dataset.filter!);
+      return;
+    }
+    if (t.closest("[data-grocery-clear]")) {
+      gClear();
       return;
     }
     const d = t.closest<HTMLElement>("[data-day]");
@@ -117,6 +167,7 @@ export function attachDashboard(doc: Document): () => void {
   doc.addEventListener("click", onClick);
   doc.addEventListener("keydown", onKey);
   doc.addEventListener("input", onInput);
+  doc.addEventListener("change", onChange);
   doc.addEventListener("close", onClose, true); // "close" doesn't bubble; capture it
 
   const fromUrl = () => {
@@ -196,6 +247,7 @@ export function attachDashboard(doc: Document): () => void {
     doc.removeEventListener("click", onClick);
     doc.removeEventListener("keydown", onKey);
     doc.removeEventListener("input", onInput);
+    doc.removeEventListener("change", onChange);
     doc.removeEventListener("close", onClose, true);
     window.removeEventListener("hashchange", fromUrl);
   };

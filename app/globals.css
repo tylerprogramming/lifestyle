@@ -364,6 +364,27 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
 .rnotes{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .rnotes p{font-size:13px;color:var(--dim);line-height:1.5;margin:0}
 
+/* ---------- groceries ---------- */
+.gtools{display:flex;gap:6px}
+.gleft{text-transform:none;letter-spacing:0;font-weight:500;color:var(--faint)}
+.gtools .fchip{text-decoration:none;display:inline-flex;align-items:center}
+.glist2{list-style:none;margin:0;padding:0}
+.glist2 li{border-top:1px solid var(--line);padding:2px 0}
+.glist2 li:first-child{border-top:0}
+.glist2 label{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:40px;cursor:pointer;font-size:14px}
+.glist2 input{width:18px;height:18px;margin:0;accent-color:var(--good)}
+.glist2 .gamt{color:var(--dim);font-size:13px;text-align:right}
+.gfrom{display:block;padding:0 0 6px 32px;font-size:11px;color:var(--faint)}
+.glist2 li.got .gname,.glist2 li.got .gamt{text-decoration:line-through;color:var(--faint)}
+.glist2.pantry label{font-size:13px;min-height:34px}
+.glist2.pantry .gfrom{display:none}
+.cooklist{list-style:none;margin:0;padding:0}
+.cooklist li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.cooklist li:first-child{border-top:0}
+.cooklist a{color:var(--text);text-decoration:none;font-weight:500}
+.cooklist a:hover{color:var(--accent)}
+.cooklist em{font-style:normal;color:var(--dim);font-size:12px}
+
 /* ---------- training load ---------- */
 .load{--c:var(--good)}
 .load.caution{--c:var(--warn)} .load.high{--c:var(--bad)}
@@ -420,6 +441,8 @@ table.runs{width:100%;border-collapse:collapse;font-size:13px;font-variant-numer
   .back{display:inline-flex;align-items:center;min-height:44px;margin:-10px 0 -4px}
   .planlist{grid-template-columns:1fr}
   .rgrid{grid-template-columns:1fr}
+  .gtools{width:100%}
+  .glist2 label{min-height:46px}
   .dv-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
   .dv-stat{padding:8px 10px}
   .dv-stat b{font-size:17px}

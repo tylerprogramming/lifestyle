@@ -6,7 +6,7 @@ import { computeStats } from "./render";
 import { esc, MONTHS, toMs, WEEKDAYS } from "./util";
 
 /** Sidebar items. Goals live on Today (with /goals linked from there), so they're not in the nav. */
-export type NavKey = "today" | "plan" | "recipes" | "running" | "goals" | "work";
+export type NavKey = "today" | "plan" | "recipes" | "groceries" | "running" | "goals" | "work";
 
 /** Color schemes: id, label, swatch (background + three metric colors). Defined in globals.css. */
 export const THEMES: [string, string, string[]][] = [
@@ -41,6 +41,7 @@ export function renderShell(active: NavKey, d: Payload, main: string): string {
     ${link(active === "goals" ? "goals" : "today", "/", "--accent", "Today")}
     ${link("plan", "/plan", "--cal", "Food &amp; plan|Plan")}
     ${link("recipes", "/recipes", "--pro", "Recipes")}
+    ${link("groceries", "/groceries", "--accent", "Groceries|Grocery")}
     ${link("running", "/running", "--run", "Running", String(d.fitness?.total_runs ?? 0))}
     <div class="nav-h">Work</div>
     ${link(active === "work" ? "work" : "", "/work", "--content", "Work &amp; body|Work")}
